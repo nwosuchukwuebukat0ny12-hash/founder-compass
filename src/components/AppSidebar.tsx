@@ -1,6 +1,8 @@
-import { LayoutDashboard, Rocket, FileText, Settings } from "lucide-react";
+import { LayoutDashboard, Rocket, FileText, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
