@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import OverviewPage from "./pages/OverviewPage";
 import StartupsPage from "./pages/StartupsPage";
+import StartupDetailPage from "./pages/StartupDetailPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
@@ -32,6 +33,7 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<OverviewPage />} />
                       <Route path="/startups" element={<StartupsPage />} />
+                      <Route path="/startups/:id" element={<StartupDetailPage />} />
                       <Route path="/documents" element={<DocumentsPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="*" element={<NotFound />} />

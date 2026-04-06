@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search, Plus, MoreHorizontal, Pencil, Trash2, Rocket, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +33,7 @@ const industryColors: Record<string, string> = {
 
 export default function StartupsPage() {
   const [search, setSearch] = useState("");
+  const navigate = useNavigate();
 
   const { data: startups = [], isLoading } = useQuery({
     queryKey: ["startups"],
@@ -110,7 +112,7 @@ export default function StartupsPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((startup) => (
-                <TableRow key={startup.id} className="group cursor-pointer">
+                <TableRow key={startup.id} className="group cursor-pointer" onClick={() => navigate(`/startups/${startup.id}`)}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
