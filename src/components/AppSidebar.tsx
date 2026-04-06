@@ -26,6 +26,7 @@ const navItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { signOut } = useAuth();
   const location = useLocation();
 
   return (
@@ -71,10 +72,16 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="px-4 py-4">
-        {!collapsed && (
-          <p className="text-xs text-sidebar-foreground/50">© 2026 Founder Pulse</p>
-        )}
+      <SidebarFooter className="px-3 py-4">
+        <Button
+          variant="ghost"
+          size={collapsed ? "icon" : "default"}
+          onClick={signOut}
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="ml-3 text-sm">Log out</span>}
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );
