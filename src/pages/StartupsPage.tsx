@@ -79,7 +79,11 @@ export default function StartupsPage() {
         </Button>
       </div>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
             <Rocket className="h-6 w-6 text-muted-foreground" />
