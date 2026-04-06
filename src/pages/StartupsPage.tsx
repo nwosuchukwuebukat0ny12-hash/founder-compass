@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Search, Plus, MoreHorizontal, Pencil, Trash2, Rocket } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash2, Rocket, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,14 +22,6 @@ interface Startup {
   stage: GrowthStage;
 }
 
-const sampleStartups: Startup[] = [
-  { id: "1", name: "PayHive", founder: "Amara Osei", industry: "FinTech", stage: "Mentorship" },
-  { id: "2", name: "MediSync", founder: "Raj Patel", industry: "HealthTech", stage: "Program" },
-  { id: "3", name: "GreenLoop", founder: "Lina Chen", industry: "CleanTech", stage: "Flourish" },
-  { id: "4", name: "EduSpark", founder: "James Mwangi", industry: "EdTech", stage: "Ideation" },
-  { id: "5", name: "DataNova", founder: "Sofia Reyes", industry: "AI / ML", stage: "Program" },
-];
-
 const industryColors: Record<string, string> = {
   FinTech: "bg-blue-50 text-blue-700 border-blue-200",
   HealthTech: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -37,8 +31,22 @@ const industryColors: Record<string, string> = {
 };
 
 export default function StartupsPage() {
-  const [startups] = useState<Startup[]>(sampleStartups);
   const [search, setSearch] = useState("");
+
+  const { data: startups = [], isLoading } = useQuery({
+    queryKey: ["startups"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("startups").select("*");
+      if (error) throw error;
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        founder: row.founder_name,
+        industry: row.industry ?? "",
+        stage: (row.current_stage as GrowthStage) ?? "Ideation",
+      }));
+    },
+  });
 
   const filtered = startups.filter(
     (s) =>
@@ -71,7 +79,11 @@ export default function StartupsPage() {
         </Button>
       </div>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
             <Rocket className="h-6 w-6 text-muted-foreground" />
