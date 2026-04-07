@@ -110,8 +110,7 @@ export default function StartupDetailPage() {
         file_url: storagePath,
         uploaded_by: user?.id ?? null,
       });
-        uploaded_by: user?.id ?? null,
-      });
+
       if (dbError) throw dbError;
 
       queryClient.invalidateQueries({ queryKey: ["documents", id] });
