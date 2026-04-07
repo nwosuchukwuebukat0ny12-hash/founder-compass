@@ -21,6 +21,19 @@ const industryColors: Record<string, string> = {
   "AI / ML": "bg-violet-50 text-violet-700 border-violet-200",
 };
 
+const DOCUMENT_BUCKET = "test-vault";
+
+const getDocumentStoragePath = (storedPath: string) => {
+  if (!storedPath.startsWith("http")) return storedPath;
+
+  const bucketPathMarker = `/${DOCUMENT_BUCKET}/`;
+  const markerIndex = storedPath.indexOf(bucketPathMarker);
+
+  if (markerIndex === -1) return storedPath;
+
+  return decodeURIComponent(storedPath.slice(markerIndex + bucketPathMarker.length));
+};
+
 export default function StartupDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -95,14 +108,17 @@ export default function StartupDetailPage() {
 
     setUploading(true);
     try {
-      const filePath = `${id}/${Date.now()}_${file.name}`;
+      const timestamp = Date.now();
+      const filePath = `startups/${id}/${timestamp}_${file.name}`;
+      console.log("Upload Path", filePath);
+
       const { error: uploadError } = await supabase.storage
-        .from("test-vault")
+        .from(DOCUMENT_BUCKET)
         .upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      // Store the storage path, not a public URL (bucket is private)
       const storagePath = filePath;
+      console.log("Database Path", storagePath);
 
       const { error: dbError } = await supabase.from("documents").insert({
         startup_id: id,
@@ -275,9 +291,10 @@ export default function StartupDetailPage() {
                   key={doc.id}
                   type="button"
                   onClick={async () => {
+                     const filePath = getDocumentStoragePath(doc.file_url);
                     const { data, error } = await supabase.storage
-                      .from("test-vault")
-                      .createSignedUrl(doc.file_url, 60);
+                       .from(DOCUMENT_BUCKET)
+                       .createSignedUrl(filePath, 60);
                     if (error || !data?.signedUrl) {
                       toast({ title: "Failed to open file", description: error?.message ?? "Unknown error", variant: "destructive" });
                       return;
