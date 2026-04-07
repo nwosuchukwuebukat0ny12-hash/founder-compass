@@ -107,7 +107,9 @@ export default function StartupDetailPage() {
       const { error: dbError } = await supabase.from("documents").insert({
         startup_id: id,
         file_name: file.name,
-        file_url: urlData.publicUrl,
+        file_url: storagePath,
+        uploaded_by: user?.id ?? null,
+      });
         uploaded_by: user?.id ?? null,
       });
       if (dbError) throw dbError;
