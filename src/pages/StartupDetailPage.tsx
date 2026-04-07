@@ -101,16 +101,16 @@ export default function StartupDetailPage() {
         .upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("test-vault")
-        .getPublicUrl(filePath);
+      // Store the storage path, not a public URL (bucket is private)
+      const storagePath = filePath;
 
       const { error: dbError } = await supabase.from("documents").insert({
         startup_id: id,
         file_name: file.name,
-        file_url: urlData.publicUrl,
+        file_url: storagePath,
         uploaded_by: user?.id ?? null,
       });
+
       if (dbError) throw dbError;
 
       queryClient.invalidateQueries({ queryKey: ["documents", id] });
@@ -271,12 +271,20 @@ export default function StartupDetailPage() {
           ) : (
             <div className="space-y-2">
               {documents.map((doc) => (
-                <a
+                <button
                   key={doc.id}
-                  href={doc.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                  type="button"
+                  onClick={async () => {
+                    const { data, error } = await supabase.storage
+                      .from("test-vault")
+                      .createSignedUrl(doc.file_url, 60);
+                    if (error || !data?.signedUrl) {
+                      toast({ title: "Failed to open file", description: error?.message ?? "Unknown error", variant: "destructive" });
+                      return;
+                    }
+                    window.open(data.signedUrl, "_blank");
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
                 >
                   <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -285,7 +293,7 @@ export default function StartupDetailPage() {
                       {new Date(doc.uploaded_at).toLocaleDateString()}
                     </p>
                   </div>
-                </a>
+                </button>
               ))}
             </div>
           )}
