@@ -101,9 +101,8 @@ export default function StartupDetailPage() {
         .upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("test-vault")
-        .getPublicUrl(filePath);
+      // Store the storage path, not a public URL (bucket is private)
+      const storagePath = filePath;
 
       const { error: dbError } = await supabase.from("documents").insert({
         startup_id: id,
