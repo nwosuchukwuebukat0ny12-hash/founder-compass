@@ -86,7 +86,7 @@ export default function StartupDetailPage() {
       setNote("");
       toast({ title: "Mentorship note saved" });
     },
-    onError: () => toast({ title: "Failed to save note", variant: "destructive" }),
+    onError: (error: any) => toast({ title: "Failed to save note", description: error?.message || error?.code || "Unknown error", variant: "destructive" }),
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,8 +115,8 @@ export default function StartupDetailPage() {
 
       queryClient.invalidateQueries({ queryKey: ["documents", id] });
       toast({ title: "File uploaded successfully" });
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Upload failed", description: error?.message || error?.code || "Unknown error", variant: "destructive" });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
