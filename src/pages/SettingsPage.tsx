@@ -1,23 +1,134 @@
-import { Settings } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Loader2, User, Mail, ShieldAlert, Users, Settings as SettingsIcon } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+
+  const { data: teamProfiles, isLoading } = useQuery({
+    queryKey: ["team-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage your account and preferences.
+        <h1 className="text-3xl font-semibold tracking-tight font-heading">Lab Administration</h1>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl leading-relaxed">
+          Manage your personal account preferences and view the active staff directory for the Collective Lab.
         </p>
       </div>
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-          <Settings className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <h3 className="mt-4 text-base font-medium">Coming soon</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Settings and configuration options are on the way.
-        </p>
-      </div>
+
+      <Tabs defaultValue="profile" className="w-full">
+        <TabsList className="mb-6 bg-muted/50 w-full sm:w-auto overflow-x-auto justify-start inline-flex">
+          <TabsTrigger value="profile" className="data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            <User className="w-4 h-4 mr-2" /> My Profile
+          </TabsTrigger>
+          <TabsTrigger value="team" className="data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            <Users className="w-4 h-4 mr-2" /> Team Directory
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profile" className="space-y-6">
+          <Card className="shadow-sm border">
+            <CardHeader className="bg-muted/10 border-b pb-6">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16 border-4 border-background shadow-sm">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                    {user?.email?.charAt(0).toUpperCase() || "L"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <CardTitle className="text-xl">Lab Administrator</CardTitle>
+                  <CardDescription className="mt-1">Active Session</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</label>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{user?.email}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Role</label>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                    <ShieldAlert className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-primary">Lab Staff (Admin)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <SettingsIcon className="h-4 w-4 text-muted-foreground" />
+                  System Preferences
+                </h4>
+                <p className="text-xs text-muted-foreground bg-muted p-4 rounded-lg border border-border/50">
+                  You are currently using the VC-Grade High Contrast theme mandated by the Collective Lab design system. All internal tracking changes are persistently logged to the Institutional Memory cache.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="team">
+          <Card className="shadow-sm border">
+            <CardHeader className="border-b">
+              <CardTitle className="text-lg">Staff Directory</CardTitle>
+              <CardDescription>All authenticated members with access to the Founder Pulse SRM.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-24">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {teamProfiles?.map((profile: any) => (
+                    <div key={profile.id} className="p-4 flex items-center justify-between hover:bg-muted/10 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-10 w-10 border border-primary/10">
+                          <AvatarFallback className="bg-primary/5 text-primary text-sm font-semibold">
+                            {profile.id.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-sm font-medium">User Profile</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{profile.id}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                        Authorized
+                      </Badge>
+                    </div>
+                  ))}
+                  {(!teamProfiles || teamProfiles.length === 0) && (
+                    <div className="p-8 text-center text-muted-foreground text-sm">
+                      No team profiles found.
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

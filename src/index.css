@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,44 +6,46 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99%;
-    --foreground: 0 0% 9%;
+    /* Founder Pulse Custom Palette (Fatima's Design) */
+    --background: 30 20% 96%; /* #F8F6F4 */
+    --foreground: 0 0% 15%; /* #3c3c3c supporting color for better readability on light text */
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 0 0% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
+    --popover-foreground: 0 0% 15%;
 
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
+    --primary: 54 55% 22%; /* #575119 */
+    --primary-foreground: 30 20% 96%; /* #F8F6F4 */
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 9%;
+    --secondary: 0 0% 90%;
+    --secondary-foreground: 54 55% 22%;
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 40%; /* #646464 */
 
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 9%;
+    --accent: 122 39% 49%; /* #4caf50 Success Green */
+    --accent-foreground: 30 20% 96%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 355 78% 56%; /* #e63946 Delayed Red */
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 0 0% 9%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 54 55% 22%;
 
-    --radius: 0.5rem;
+    --radius: 8px; /* Strict 8px rounding from spec */
 
-    --sidebar-background: 0 0% 7%;
-    --sidebar-foreground: 0 0% 63%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 0 0% 9%;
-    --sidebar-accent: 0 0% 14%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 16%;
-    --sidebar-ring: 0 0% 30%;
+    /* Light Theme Sidebar to match Fundu VC structure but with Fatima's colors */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 30%;
+    --sidebar-primary: 54 55% 22%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 20% 96%;
+    --sidebar-accent-foreground: 54 55% 22%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 54 55% 22%;
 
     --stage-ideation: 220 70% 55%;
     --stage-program: 262 60% 55%;
@@ -98,6 +100,10 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
   }
 }

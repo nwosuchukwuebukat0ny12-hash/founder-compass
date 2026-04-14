@@ -13,6 +13,7 @@ import DocumentsPage from "./pages/DocumentsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
 import NotFound from "./pages/NotFound";
+import FounderPortalPage from "./pages/FounderPortalPage";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
                       <Route path="/" element={<OverviewPage />} />
                       <Route path="/startups" element={<StartupsPage />} />
                       <Route path="/startups/:id" element={<StartupDetailPage />} />
+                      <Route path="/founder-portal" element={<FounderPortalPage />} />
                       <Route path="/documents" element={<DocumentsPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="*" element={<NotFound />} />

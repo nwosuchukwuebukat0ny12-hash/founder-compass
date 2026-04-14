@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          new_value: string | null
+          old_value: string | null
+          resource_id: string
+          resource_type: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          resource_id: string
+          resource_type: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          resource_id?: string
+          resource_type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           file_name: string
@@ -95,6 +136,48 @@ export type Database = {
           },
         ]
       }
+      notes: {
+        Row: {
+          author_id: string | null
+          content: string
+          created_at: string
+          id: string
+          is_private: boolean | null
+          startup_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_private?: boolean | null
+          startup_id: string
+        }
+        Update: {
+          author_id?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_private?: boolean | null
+          startup_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notes_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -118,31 +201,52 @@ export type Database = {
       }
       startups: {
         Row: {
+          active_users: number | null
           created_at: string
           current_stage: string | null
           founder_name: string
           id: string
           industry: string | null
+          is_delayed: boolean | null
+          ltv_cac_ratio: number | null
+          mom_growth_rate: number | null
+          monthly_burn_rate: number | null
           name: string
+          runway_months: number | null
           updated_at: string
+          user_retention: number | null
         }
         Insert: {
+          active_users?: number | null
           created_at?: string
           current_stage?: string | null
           founder_name: string
           id?: string
           industry?: string | null
+          is_delayed?: boolean | null
+          ltv_cac_ratio?: number | null
+          mom_growth_rate?: number | null
+          monthly_burn_rate?: number | null
           name: string
+          runway_months?: number | null
           updated_at?: string
+          user_retention?: number | null
         }
         Update: {
+          active_users?: number | null
           created_at?: string
           current_stage?: string | null
           founder_name?: string
           id?: string
           industry?: string | null
+          is_delayed?: boolean | null
+          ltv_cac_ratio?: number | null
+          mom_growth_rate?: number | null
+          monthly_burn_rate?: number | null
           name?: string
+          runway_months?: number | null
           updated_at?: string
+          user_retention?: number | null
         }
         Relationships: []
       }

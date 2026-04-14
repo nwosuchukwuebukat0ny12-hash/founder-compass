@@ -21,6 +21,7 @@ interface Startup {
   founder: string;
   industry: string;
   stage: GrowthStage;
+  is_delayed: boolean;
 }
 
 const industryColors: Record<string, string> = {
@@ -46,6 +47,7 @@ export default function StartupsPage() {
         founder: row.founder_name,
         industry: row.industry ?? "",
         stage: (row.current_stage as GrowthStage) ?? "Ideation",
+        is_delayed: row.is_delayed ?? false,
       }));
     },
   });
@@ -134,8 +136,8 @@ export default function StartupsPage() {
                       {startup.industry}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <GrowthStageBar currentStage={startup.stage} />
+                  <TableCell className="w-[400px]">
+                    <GrowthStageBar currentStage={startup.stage} isDelayed={startup.is_delayed} />
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>

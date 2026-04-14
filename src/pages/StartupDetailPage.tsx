@@ -170,7 +170,7 @@ export default function StartupDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight">{startup.name}</h1>
             <p className="text-sm text-muted-foreground mt-1">Founded by {startup.founder_name}</p>
           </div>
-          <GrowthStageBar currentStage={(startup.current_stage as GrowthStage) ?? "Ideation"} />
+          <GrowthStageBar currentStage={(startup.current_stage as GrowthStage) ?? "Ideation"} isDelayed={startup.is_delayed ?? false} />
         </div>
       </div>
 
@@ -185,15 +185,7 @@ export default function StartupDetailPage() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6 mt-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Founder</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-lg font-medium">{startup.founder_name}</p>
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Industry</CardTitle>
@@ -204,116 +196,208 @@ export default function StartupDetailPage() {
                 </Badge>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Active Users</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold">{startup.active_users?.toLocaleString() ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">MoM Growth</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold text-accent">+{startup.mom_growth_rate ?? 0}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Retention</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold">{startup.user_retention ?? 0}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">LTV:CAC Ratio</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold">{startup.ltv_cac_ratio ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Burn</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-semibold">${startup.monthly_burn_rate?.toLocaleString() ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card className={startup.runway_months && startup.runway_months < 6 ? "border-destructive/50 bg-destructive/5" : ""}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Runway</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className={`text-2xl font-semibold ${startup.runway_months && startup.runway_months < 6 ? "text-destructive" : ""}`}>
+                  {startup.runway_months ?? 0} {startup.runway_months === 1 ? "month" : "months"}
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Mentorship Log */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Mentorship Log</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Textarea
-                  placeholder="Add a mentorship note..."
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="min-h-[80px]"
-                />
-                <Button
-                  size="icon"
-                  className="shrink-0 self-end"
-                  disabled={!note.trim() || addMilestone.isPending}
-                  onClick={() => addMilestone.mutate(note)}
-                >
-                  {addMilestone.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Notes Section Placeholder */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Internal Admin Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">Secure staff-only notes about {startup.name}.</p>
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="Add a secure internal note..."
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="min-h-[80px]"
+                  />
+                  <Button
+                    size="icon"
+                    className="shrink-0 self-end"
+                    disabled={!note.trim()}
+                  >
                     <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-
-              {milestones.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No milestones logged yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {milestones.map((m) => (
-                    <div key={m.id} className="rounded-lg border p-3">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="secondary" className="text-xs">{m.stage_reached}</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(m.achieved_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Activity Stream replacing Mentorship log */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Activity Stream</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {milestones.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No recent activity found.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {milestones.map((m) => (
+                      <div key={m.id} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="secondary" className="text-xs">Stage: {m.stage_reached}</Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(m.achieved_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Document Vault Tab */}
         <TabsContent value="vault" className="space-y-4 mt-4">
-          <Card>
-            <CardContent className="pt-6">
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 py-12 transition-colors hover:border-primary/50 hover:bg-muted/50"
-              >
-                {uploading ? (
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                ) : (
-                  <Upload className="h-8 w-8 text-muted-foreground" />
-                )}
-                <p className="mt-2 text-sm font-medium">
-                  {uploading ? "Uploading..." : "Click to upload a file"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">PDF, DOCX, or any file type</p>
-              </button>
-            </CardContent>
-          </Card>
-
-          {documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No documents uploaded yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {documents.map((doc) => (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={async () => {
-                     const filePath = getDocumentStoragePath(doc.file_url);
-                    const { data, error } = await supabase.storage
-                       .from(DOCUMENT_BUCKET)
-                       .createSignedUrl(filePath, 60);
-                    if (error || !data?.signedUrl) {
-                      toast({ title: "Failed to open file", description: error?.message ?? "Unknown error", variant: "destructive" });
-                      return;
-                    }
-                    window.open(data.signedUrl, "_blank");
-                  }}
-                  className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
-                >
-                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{doc.file_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(doc.uploaded_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </button>
-              ))}
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-medium mb-4">Required Documents</h3>
+              <div className="space-y-4">
+                {[
+                  { name: "Pitch Deck (The Big Idea)", desc: "Problem, Solution, Market, Ask", focus: "Does it make sense?" },
+                  { name: "Product Roadmap", desc: "MVP timeline and big launch", focus: "Can they build it?" },
+                  { name: "Founder Bio & Cap Table", desc: "Team ownership split", focus: "Fair ownership?" },
+                  { name: "Legal & KYC", desc: "CAC, Tax ID, Government IDs", focus: "Is it legal?" },
+                  { name: "Term Sheet / MOU", desc: "Valuation and decision rules", focus: "Fair deal?" },
+                  { name: "Financial Model", desc: "Burn rate and profitability projection", focus: "Will they run out of money?" },
+                ].map((doc, idx) => {
+                  // A simple mock check if it's uploaded based on file name contents (for demo purposes)
+                  const isUploaded = documents.some(d => d.file_name.toLowerCase().includes(doc.name.split(" ")[0].toLowerCase()));
+                  return (
+                    <Card key={idx} className={isUploaded ? "border-primary/50 bg-primary/5" : ""}>
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start">
+                          <CardTitle className="text-sm font-medium">{doc.name}</CardTitle>
+                          {isUploaded && <Badge variant="default" className="text-[10px]">Verified</Badge>}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-xs text-muted-foreground mb-1">{doc.desc}</p>
+                        <p className="text-xs font-medium text-foreground">Lab Focus: <span className="font-normal text-muted-foreground">{doc.focus}</span></p>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
-          )}
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium mb-4">Upload & Files</h3>
+              <Card>
+                <CardContent className="pt-6">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 py-12 transition-colors hover:border-primary/50 hover:bg-muted/50"
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                    )}
+                    <p className="mt-2 text-sm font-medium">
+                      {uploading ? "Uploading..." : "Click to upload a file"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Match the required document names</p>
+                  </button>
+                </CardContent>
+              </Card>
+
+              {documents.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No documents uploaded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {documents.map((doc) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={async () => {
+                         const filePath = getDocumentStoragePath(doc.file_url);
+                        const { data, error } = await supabase.storage
+                           .from(DOCUMENT_BUCKET)
+                           .createSignedUrl(filePath, 60);
+                        if (error || !data?.signedUrl) {
+                          toast({ title: "Failed to open file", description: error?.message ?? "Unknown error", variant: "destructive" });
+                          return;
+                        }
+                        window.open(data.signedUrl, "_blank");
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                    >
+                      <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(doc.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
