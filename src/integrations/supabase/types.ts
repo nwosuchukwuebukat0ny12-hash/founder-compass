@@ -14,6 +14,154 @@ export type Database = {
   }
   public: {
     Tables: {
+      event_attendees: {
+        Row: {
+          created_at: string | null
+          event_id: string | null
+          id: string
+          status: string | null
+          startup_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_id?: string | null
+          id?: string
+          status?: string | null
+          startup_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_id?: string | null
+          id?: string
+          status?: string | null
+          startup_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_attendees_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_attendees_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          cover_image_url: string | null
+          created_at: string | null
+          description: string | null
+          event_date: string
+          event_type: string | null
+          id: string
+          location: string | null
+          title: string
+        }
+        Insert: {
+          cover_image_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          event_date: string
+          event_type?: string | null
+          id?: string
+          location?: string | null
+          title: string
+        }
+        Update: {
+          cover_image_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          event_date?: string
+          event_type?: string | null
+          id?: string
+          location?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      startup_financials: {
+        Row: {
+          created_at: string | null
+          expenses: number | null
+          id: string
+          month: string
+          profit_loss: number | null
+          revenue: number | null
+          startup_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expenses?: number | null
+          id?: string
+          month: string
+          profit_loss?: number | null
+          revenue?: number | null
+          startup_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expenses?: number | null
+          id?: string
+          month?: string
+          profit_loss?: number | null
+          revenue?: number | null
+          startup_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "startup_financials_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      startup_targets: {
+        Row: {
+          created_at: string | null
+          id: string
+          month: string
+          objective: string
+          status: string | null
+          startup_id: string | null
+          target_value: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          month: string
+          objective: string
+          status?: string | null
+          startup_id?: string | null
+          target_value?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          month?: string
+          objective?: string
+          status?: string | null
+          startup_id?: string | null
+          target_value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "startup_targets_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -202,51 +350,86 @@ export type Database = {
       startups: {
         Row: {
           active_users: number | null
+          business_type: string | null
           created_at: string
           current_stage: string | null
           founder_name: string
           id: string
           industry: string | null
           is_delayed: boolean | null
+          key_results: string | null
+          logo_url: string | null
           ltv_cac_ratio: number | null
+          mission_statement: string | null
           mom_growth_rate: number | null
           monthly_burn_rate: number | null
           name: string
+          north_star_metric_name: string | null
+          north_star_metric_value: number | null
+          problem_statement: string | null
+          roadmap_text: string | null
           runway_months: number | null
+          solution_description: string | null
+          strategic_goals: string | null
+          target_market: string | null
           updated_at: string
           user_retention: number | null
+          value_proposition: string | null
+          vision_statement: string | null
         }
         Insert: {
           active_users?: number | null
+          business_type?: string | null
           created_at?: string
           current_stage?: string | null
           founder_name: string
           id?: string
           industry?: string | null
           is_delayed?: boolean | null
+          key_results?: string | null
+          logo_url?: string | null
           ltv_cac_ratio?: number | null
+          mission_statement?: string | null
           mom_growth_rate?: number | null
           monthly_burn_rate?: number | null
           name: string
+          problem_statement?: string | null
+          roadmap_text?: string | null
           runway_months?: number | null
+          solution_description?: string | null
+          strategic_goals?: string | null
+          target_market?: string | null
           updated_at?: string
           user_retention?: number | null
+          value_proposition?: string | null
+          vision_statement?: string | null
         }
         Update: {
           active_users?: number | null
+          business_type?: string | null
           created_at?: string
           current_stage?: string | null
           founder_name?: string
           id?: string
           industry?: string | null
           is_delayed?: boolean | null
+          key_results?: string | null
+          logo_url?: string | null
           ltv_cac_ratio?: number | null
+          mission_statement?: string | null
           mom_growth_rate?: number | null
           monthly_burn_rate?: number | null
           name?: string
+          problem_statement?: string | null
+          roadmap_text?: string | null
           runway_months?: number | null
+          solution_description?: string | null
+          strategic_goals?: string | null
+          target_market?: string | null
           updated_at?: string
           user_retention?: number | null
+          value_proposition?: string | null
+          vision_statement?: string | null
         }
         Relationships: []
       }

@@ -3,13 +3,18 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useLocation } from "react-router-dom";
 import { ChevronRight, Bell } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { user } = useAuth();
   
   // Basic breadcrumb generation based on path
   const pathnames = location.pathname.split("/").filter((x) => x);
   
+  const userEmail = user?.email || "admin@lab.com";
+  const userInitial = userEmail.charAt(0).toUpperCase();
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -52,11 +57,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-3 pl-5 border-l">
                 <div className="hidden md:block text-right">
                   <p className="text-sm font-medium leading-none">Lab Admin</p>
-                  <p className="text-xs text-muted-foreground mt-1">admin@collectivelab.com</p>
+                  <p className="text-xs text-muted-foreground mt-1">{userEmail}</p>
                 </div>
                 <Avatar className="h-9 w-9 border-2 border-primary/10">
                   <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
-                    LA
+                    {userInitial}
                   </AvatarFallback>
                 </Avatar>
               </div>

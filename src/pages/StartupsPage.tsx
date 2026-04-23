@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, MoreHorizontal, Pencil, Trash2, Rocket, Loader2 } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash2, Rocket, Loader2, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -13,15 +13,29 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { GrowthStageBar, type GrowthStage } from "@/components/GrowthStageBar";
+
+const stageStyles: Record<string, string> = {
+  Early: "bg-blue-50 text-blue-700 border-blue-200",
+  Growth: "bg-violet-50 text-violet-700 border-violet-200",
+  Maturity: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+// Same logic as Command Center — keeps the whole app in sync
+function classifyStage(stage: string | null): "Early" | "Growth" | "Maturity" {
+  const s = (stage || "").toLowerCase();
+  if (["ideation", "mvp", "seed", "program"].includes(s)) return "Early";
+  if (["scaling", "series a", "expansion", "mentorship", "growth"].includes(s)) return "Growth";
+  if (["profitability", "exit-ready", "sustainability", "flourish", "maturity"].includes(s)) return "Maturity";
+  return "Early";
+}
 
 interface Startup {
   id: string;
   name: string;
   founder: string;
   industry: string;
-  stage: GrowthStage;
-  is_delayed: boolean;
+  stage: "Early" | "Growth" | "Maturity";
+  needsReview: boolean;
 }
 
 const industryColors: Record<string, string> = {
@@ -46,8 +60,8 @@ export default function StartupsPage() {
         name: row.name,
         founder: row.founder_name,
         industry: row.industry ?? "",
-        stage: (row.current_stage as GrowthStage) ?? "Ideation",
-        is_delayed: row.is_delayed ?? false,
+        stage: classifyStage(row.current_stage),
+        needsReview: row.is_delayed || (row.runway_months !== null && row.runway_months !== undefined && row.runway_months < 6),
       }));
     },
   });
@@ -77,10 +91,6 @@ export default function StartupsPage() {
             className="pl-9"
           />
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Add New Startup
-        </Button>
       </div>
 
       {isLoading ? (
@@ -94,12 +104,8 @@ export default function StartupsPage() {
           </div>
           <h3 className="mt-4 text-base font-medium">No startups yet</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Get started by adding your first startup.
+            Waiting for startups to complete onboarding.
           </p>
-          <Button className="mt-4" size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Startup
-          </Button>
         </div>
       ) : (
         <div className="rounded-lg border">
@@ -108,8 +114,8 @@ export default function StartupsPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Startup & Founder</TableHead>
                 <TableHead>Industry</TableHead>
-                <TableHead>Growth Stage</TableHead>
-                <TableHead className="w-12" />
+                <TableHead>Stage</TableHead>
+                <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -136,31 +142,22 @@ export default function StartupsPage() {
                       {startup.industry}
                     </Badge>
                   </TableCell>
-                  <TableCell className="w-[400px]">
-                    <GrowthStageBar currentStage={startup.stage} isDelayed={startup.is_delayed} />
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs font-semibold ${stageStyles[startup.stage] ?? "bg-muted text-muted-foreground"}`}
+                    >
+                      {startup.stage}
+                    </Badge>
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {startup.needsReview ? (
+                      <Badge variant="destructive" className="text-xs font-semibold gap-1">
+                        <AlertTriangle className="h-3 w-3" /> Needs Review
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-emerald-600 font-medium">On Track</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

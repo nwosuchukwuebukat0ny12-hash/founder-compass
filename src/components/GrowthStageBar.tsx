@@ -1,8 +1,8 @@
 import React from "react";
 import { CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 
-// Officially locked order
-export const STAGES = ["Ideation", "Program", "Mentorship", "Flourish"] as const;
+// Officially locked order for the new taxonomy
+export const STAGES = ["Early", "Growth", "Maturity"] as const;
 export type GrowthStage = (typeof STAGES)[number];
 
 interface GrowthStageBarProps {

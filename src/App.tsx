@@ -6,14 +6,24 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import OverviewPage from "./pages/OverviewPage";
-import StartupsPage from "./pages/StartupsPage";
-import StartupDetailPage from "./pages/StartupDetailPage";
-import DocumentsPage from "./pages/DocumentsPage";
-import SettingsPage from "./pages/SettingsPage";
-import AuthPage from "./pages/AuthPage";
-import NotFound from "./pages/NotFound";
-import FounderPortalPage from "./pages/FounderPortalPage";
+import { lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
+
+const OverviewPage = lazy(() => import("./pages/OverviewPage"));
+const StartupsPage = lazy(() => import("./pages/StartupsPage"));
+const StartupDetailPage = lazy(() => import("./pages/StartupDetailPage"));
+const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const FounderPortalPage = lazy(() => import("./pages/FounderPortalPage"));
+const EventsPage = lazy(() => import("./pages/EventsPage"));
+
+const LoadingScreen = () => (
+  <div className="flex h-screen w-full items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 const queryClient = new QueryClient();
 
@@ -25,21 +35,28 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/auth" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <AuthPage />
+              </Suspense>
+            } />
             <Route
               path="/*"
               element={
                 <ProtectedRoute>
                   <DashboardLayout>
-                    <Routes>
-                      <Route path="/" element={<OverviewPage />} />
-                      <Route path="/startups" element={<StartupsPage />} />
-                      <Route path="/startups/:id" element={<StartupDetailPage />} />
-                      <Route path="/founder-portal" element={<FounderPortalPage />} />
-                      <Route path="/documents" element={<DocumentsPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
+                    <Suspense fallback={<LoadingScreen />}>
+                      <Routes>
+                        <Route path="/" element={<OverviewPage />} />
+                        <Route path="/startups" element={<StartupsPage />} />
+                        <Route path="/startups/:id" element={<StartupDetailPage />} />
+                        <Route path="/founder-portal" element={<FounderPortalPage />} />
+                        <Route path="/events" element={<EventsPage />} />
+                        <Route path="/documents" element={<DocumentsPage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </Suspense>
                   </DashboardLayout>
                 </ProtectedRoute>
               }

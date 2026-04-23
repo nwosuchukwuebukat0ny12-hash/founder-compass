@@ -105,16 +105,16 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-4">
                         <Avatar className="h-10 w-10 border border-primary/10">
                           <AvatarFallback className="bg-primary/5 text-primary text-sm font-semibold">
-                            {profile.id.substring(0, 2).toUpperCase()}
+                            {profile.email?.charAt(0).toUpperCase() || "?"}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="text-sm font-medium">User Profile</p>
-                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{profile.id}</p>
+                          <p className="text-sm font-medium">{profile.email}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Joined {new Date(profile.created_at).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                         </div>
                       </div>
-                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                        Authorized
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 capitalize">
+                        {profile.role || "Staff"}
                       </Badge>
                     </div>
                   ))}
