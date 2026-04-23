@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowLeft, Upload, FileText, Loader2, Send, Target, Zap, Rocket, LineChart, Users, Megaphone, CheckCircle2, Calendar, Download, Crosshair, Flame } from "lucide-react";
+import { ArrowLeft, Upload, FileText, Loader2, Send, Target, Zap, Rocket, LineChart, Users, Megaphone, CheckCircle2, Calendar, Download, Crosshair, Flame, MessageSquare } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +102,36 @@ export default function StartupDetailPage() {
     enabled: !!id,
   });
 
+  const { data: notes = [] } = useQuery({
+    queryKey: ["notes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("notes").select("*, profiles(email)").eq("startup_id", id!).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!id,
+  });
+
+  const [noteText, setNoteText] = useState("");
+
+  const addNote = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("notes").insert({
+        content: noteText,
+        startup_id: id!,
+        author_id: user?.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notes", id] });
+      setNoteText("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error adding note", description: error.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -183,6 +213,7 @@ export default function StartupDetailPage() {
           <TabsTrigger value="events" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-2 py-3 bg-transparent shadow-none"><Calendar className="w-4 h-4 mr-2" /> Events</TabsTrigger>
           <TabsTrigger value="team" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-2 py-3 bg-transparent shadow-none"><Users className="w-4 h-4 mr-2" /> Team & Operations</TabsTrigger>
           <TabsTrigger value="updates" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-2 py-3 bg-transparent shadow-none"><Megaphone className="w-4 h-4 mr-2" /> Updates</TabsTrigger>
+          <TabsTrigger value="notes" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-2 py-3 bg-transparent shadow-none"><MessageSquare className="w-4 h-4 mr-2" /> Notes</TabsTrigger>
           <TabsTrigger value="vault" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none px-2 py-3 bg-transparent shadow-none"><FileText className="w-4 h-4 mr-2" /> Document Vault</TabsTrigger>
         </TabsList>
 
@@ -726,6 +757,63 @@ export default function StartupDetailPage() {
             </div>
           </div>
         </TabsContent>
+
+        {/* Notes Tab */}
+        <TabsContent value="notes" className="space-y-6 focus-visible:outline-none focus-visible:ring-0">
+          <Card className="shadow-sm border">
+            <CardHeader className="border-b bg-muted/20">
+              <CardTitle className="text-base font-semibold">Interaction Notes</CardTitle>
+              <CardDescription>Log calls, meetings, observations, and key decisions. This is the Lab's institutional memory for {startup.name}.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {/* Add Note Input */}
+              <div className="flex gap-3 mb-6">
+                <Textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder={`Had a call with ${startup.founder_name}? Met them at an event? Log it here...`}
+                  rows={3}
+                  className="flex-1 resize-none"
+                />
+                <Button
+                  className="shrink-0 self-end"
+                  onClick={() => addNote.mutate()}
+                  disabled={addNote.isPending || !noteText.trim()}
+                >
+                  {addNote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+
+              {/* Notes Timeline */}
+              {notes.length === 0 ? (
+                <div className="text-center py-12 bg-muted/10 rounded-xl border border-dashed">
+                  <MessageSquare className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-foreground">No notes yet</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">Start logging your interactions with {startup.founder_name}. Every note builds the Lab's knowledge base.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {notes.map((note: any) => (
+                    <div key={note.id} className="relative pl-6 pb-4 border-l-2 border-border last:border-l-0">
+                      <div className="absolute -left-[9px] top-0 h-4 w-4 rounded-full bg-primary/20 border-2 border-primary" />
+                      <div className="bg-card border rounded-lg p-4 shadow-sm">
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
+                        <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
+                          <span className="font-medium text-primary">{note.profiles?.email || "Lab Staff"}</span>
+                          <span>•</span>
+                          <span>{new Date(note.created_at).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          <span>{new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 8. Document Vault Tab */}
       </Tabs>
     </div>
   );

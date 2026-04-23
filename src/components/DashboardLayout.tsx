@@ -51,7 +51,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-5">
               <button className="text-muted-foreground hover:text-foreground transition-colors relative">
                 <Bell className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive"></span>
               </button>
               
               <div className="flex items-center gap-3 pl-5 border-l">
