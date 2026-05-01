@@ -17,6 +17,12 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const FounderPortalPage = lazy(() => import("./pages/FounderPortalPage"));
+const FounderTargetsPage = lazy(() => import("./pages/FounderTargetsPage"));
+const FounderFinancialsPage = lazy(() => import("./pages/FounderFinancialsPage"));
+const FounderProfilePage = lazy(() => import("./pages/FounderProfilePage"));
+const FounderDocumentsPage = lazy(() => import("./pages/FounderDocumentsPage"));
+const FounderUpdatesPage = lazy(() => import("./pages/FounderUpdatesPage"));
+const FounderEventsPage = lazy(() => import("./pages/FounderEventsPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 
 const LoadingScreen = () => (
@@ -26,6 +32,83 @@ const LoadingScreen = () => (
 );
 
 const queryClient = new QueryClient();
+
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
+import { FounderLayout } from "@/components/FounderLayout";
+
+const FounderOnboardingPage = lazy(() => import("./pages/FounderOnboardingPage"));
+
+const FounderTeamPage = lazy(() => import("./pages/FounderTeamPage"));
+
+const RoleRouter = () => {
+  const { user } = useAuth();
+  
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  if (isLoading) return <LoadingScreen />;
+
+  const role = profile?.role;
+
+  if (role === 'admin') {
+    return (
+      <DashboardLayout>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/startups" element={<StartupsPage />} />
+            <Route path="/startups/:id" element={<StartupDetailPage />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </DashboardLayout>
+    );
+  }
+
+  if (role === 'founder') {
+    return (
+      <FounderLayout>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/" element={<FounderPortalPage />} />
+            <Route path="/targets" element={<FounderTargetsPage />} />
+            <Route path="/financials" element={<FounderFinancialsPage />} />
+            <Route path="/profile" element={<FounderProfilePage />} />
+            <Route path="/team" element={<FounderTeamPage />} />
+            <Route path="/documents" element={<FounderDocumentsPage />} />
+            <Route path="/updates" element={<FounderUpdatesPage />} />
+            <Route path="/events" element={<FounderEventsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </FounderLayout>
+    );
+  }
+
+  // No role (New user)
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path="/onboarding" element={<FounderOnboardingPage />} />
+        <Route path="*" element={<Navigate to="/onboarding" replace />} />
+      </Routes>
+    </Suspense>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -44,20 +127,7 @@ const App = () => (
               path="/*"
               element={
                 <ProtectedRoute>
-                  <DashboardLayout>
-                    <Suspense fallback={<LoadingScreen />}>
-                      <Routes>
-                        <Route path="/" element={<OverviewPage />} />
-                        <Route path="/startups" element={<StartupsPage />} />
-                        <Route path="/startups/:id" element={<StartupDetailPage />} />
-                        <Route path="/founder-portal" element={<FounderPortalPage />} />
-                        <Route path="/events" element={<EventsPage />} />
-                        <Route path="/documents" element={<DocumentsPage />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
-                    </Suspense>
-                  </DashboardLayout>
+                  <RoleRouter />
                 </ProtectedRoute>
               }
             />

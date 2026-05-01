@@ -247,36 +247,189 @@ export type Database = {
       }
       milestones: {
         Row: {
-          achieved_at: string
           id: string
-          logged_by: string | null
-          stage_reached: string
-          startup_id: string | null
+          startup_id: string
+          founder_id: string | null
+          title: string
+          category: string | null
+          type: string | null
+          status: string | null
+          priority: string | null
+          is_pinned: boolean | null
+          progress: number | null
+          deadline: string | null
+          created_at: string | null
+          updated_at: string | null
+          target_value: number | null
+          current_value: number | null
         }
         Insert: {
-          achieved_at?: string
           id?: string
-          logged_by?: string | null
-          stage_reached: string
-          startup_id?: string | null
+          startup_id: string
+          founder_id?: string | null
+          title: string
+          category?: string | null
+          type?: string | null
+          status?: string | null
+          priority?: string | null
+          is_pinned?: boolean | null
+          progress?: number | null
+          deadline?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          target_value?: number | null
+          current_value?: number | null
         }
         Update: {
-          achieved_at?: string
           id?: string
-          logged_by?: string | null
-          stage_reached?: string
-          startup_id?: string | null
+          startup_id?: string
+          founder_id?: string | null
+          title?: string
+          category?: string | null
+          type?: string | null
+          status?: string | null
+          priority?: string | null
+          is_pinned?: boolean | null
+          progress?: number | null
+          deadline?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          target_value?: number | null
+          current_value?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "milestones_logged_by_fkey"
-            columns: ["logged_by"]
+            foreignKeyName: "milestones_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "milestones_founder_id_fkey"
+            columns: ["founder_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      team_members: {
+        Row: {
+          id: string
+          startup_id: string
+          full_name: string
+          role: string
+          avatar_url: string | null
+          linkedin: string | null
+          current_focus: string | null
+          is_founder: boolean | null
+          bio: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id: string
+          full_name: string
+          role: string
+          avatar_url?: string | null
+          linkedin?: string | null
+          current_focus?: string | null
+          is_founder?: boolean | null
+          bio?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string
+          full_name?: string
+          role?: string
+          avatar_url?: string | null
+          linkedin?: string | null
+          current_focus?: string | null
+          is_founder?: boolean | null
+          bio?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
           {
-            foreignKeyName: "milestones_startup_id_fkey"
+            foreignKeyName: "team_members_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekly_vitals: {
+        Row: {
+          id: string
+          startup_id: string
+          founder_id: string | null
+          week_start: string
+          revenue: number | null
+          top_win: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id: string
+          founder_id?: string | null
+          week_start: string
+          revenue?: number | null
+          top_win?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string
+          founder_id?: string | null
+          week_start?: string
+          revenue?: number | null
+          top_win?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_vitals_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      achievements: {
+        Row: {
+          id: string
+          startup_id: string
+          founder_id: string | null
+          title: string
+          source: string | null
+          source_id: string | null
+          achieved_at: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id: string
+          founder_id?: string | null
+          title: string
+          source?: string | null
+          source_id?: string | null
+          achieved_at?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string
+          founder_id?: string | null
+          title?: string
+          source?: string | null
+          source_id?: string | null
+          achieved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "achievements_startup_id_fkey"
             columns: ["startup_id"]
             isOneToOne: false
             referencedRelation: "startups"
@@ -328,31 +481,60 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           email: string
+          full_name: string | null
           id: string
           role: string | null
+          startup_id: string | null
+          phone_number: string | null
+          country: string | null
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           email: string
+          full_name?: string | null
           id: string
           role?: string | null
+          startup_id?: string | null
+          phone_number?: string | null
+          country?: string | null
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           email?: string
+          full_name?: string | null
           id?: string
           role?: string | null
+          startup_id?: string | null
+          phone_number?: string | null
+          country?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       startups: {
         Row: {
           active_users: number | null
+          business_model: string | null
           business_type: string | null
           created_at: string
+          culture_tags: string[] | null
+          currency: string | null
+          metric_config: Json | null
           current_stage: string | null
+          description: string | null
+          founder_id: string | null
           founder_name: string
           id: string
           industry: string | null
@@ -366,9 +548,12 @@ export type Database = {
           name: string
           north_star_metric_name: string | null
           north_star_metric_value: number | null
+          open_ask: string | null
           problem_statement: string | null
           roadmap_text: string | null
           runway_months: number | null
+          sector: string | null
+          social_links: Json | null
           solution_description: string | null
           strategic_goals: string | null
           target_market: string | null
@@ -376,12 +561,18 @@ export type Database = {
           user_retention: number | null
           value_proposition: string | null
           vision_statement: string | null
+          website: string | null
         }
         Insert: {
           active_users?: number | null
+          business_model?: string | null
           business_type?: string | null
           created_at?: string
+          currency?: string | null
+          metric_config?: Json | null
           current_stage?: string | null
+          description?: string | null
+          founder_id?: string | null
           founder_name: string
           id?: string
           industry?: string | null
@@ -396,6 +587,8 @@ export type Database = {
           problem_statement?: string | null
           roadmap_text?: string | null
           runway_months?: number | null
+          sector?: string | null
+          social_links?: Json | null
           solution_description?: string | null
           strategic_goals?: string | null
           target_market?: string | null
@@ -403,12 +596,18 @@ export type Database = {
           user_retention?: number | null
           value_proposition?: string | null
           vision_statement?: string | null
+          website?: string | null
         }
         Update: {
           active_users?: number | null
+          business_model?: string | null
           business_type?: string | null
           created_at?: string
+          currency?: string | null
+          metric_config?: Json | null
           current_stage?: string | null
+          description?: string | null
+          founder_id?: string | null
           founder_name?: string
           id?: string
           industry?: string | null
@@ -423,6 +622,7 @@ export type Database = {
           problem_statement?: string | null
           roadmap_text?: string | null
           runway_months?: number | null
+          sector?: string | null
           solution_description?: string | null
           strategic_goals?: string | null
           target_market?: string | null
@@ -430,8 +630,196 @@ export type Database = {
           user_retention?: number | null
           value_proposition?: string | null
           vision_statement?: string | null
+          website?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "startups_founder_id_fkey"
+            columns: ["founder_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      hiring_roles: {
+        Row: {
+          id: string
+          startup_id: string
+          role_title: string
+          department: string | null
+          status: string | null
+          priority: string | null
+          description_url: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          startup_id: string
+          role_title: string
+          department?: string | null
+          status?: string | null
+          priority?: string | null
+          description_url?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          startup_id?: string
+          role_title?: string
+          department?: string | null
+          status?: string | null
+          priority?: string | null
+          description_url?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hiring_roles_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      startup_updates: {
+        Row: {
+          id: string
+          startup_id: string | null
+          title: string
+          content: string
+          type: string | null
+          created_at: string | null
+          author_id: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id?: string | null
+          title: string
+          content: string
+          type?: string | null
+          created_at?: string | null
+          author_id?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string | null
+          title?: string
+          content?: string
+          type?: string | null
+          created_at?: string | null
+          author_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "startup_updates_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "startup_updates_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pulses: {
+        Row: {
+          id: string
+          startup_id: string
+          founder_id: string | null
+          month: string
+          custom_kpis: Json | null
+          mrr: number | null
+          expenses: number | null
+          cash_in_bank: number | null
+          active_users: number | null
+          new_users: number | null
+          lost_users: number | null
+          team_morale: number | null
+          team_size: number | null
+          win: string | null
+          blocker: string | null
+          ask: string | null
+          fundraising_status: string | null
+          spend_salaries: number | null
+          spend_infra: number | null
+          spend_marketing: number | null
+          spend_ops: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id: string
+          founder_id?: string | null
+          month: string
+          custom_kpis?: Json | null
+          mrr?: number | null
+          expenses?: number | null
+          cash_in_bank?: number | null
+          active_users?: number | null
+          new_users?: number | null
+          lost_users?: number | null
+          team_morale?: number | null
+          team_size?: number | null
+          win?: string | null
+          blocker?: string | null
+          ask?: string | null
+          fundraising_status?: string | null
+          spend_salaries?: number | null
+          spend_infra?: number | null
+          spend_marketing?: number | null
+          spend_ops?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string
+          founder_id?: string | null
+          month?: string
+          custom_kpis?: Json | null
+          mrr?: number | null
+          expenses?: number | null
+          cash_in_bank?: number | null
+          active_users?: number | null
+          new_users?: number | null
+          lost_users?: number | null
+          team_morale?: number | null
+          team_size?: number | null
+          win?: string | null
+          blocker?: string | null
+          ask?: string | null
+          fundraising_status?: string | null
+          spend_salaries?: number | null
+          spend_infra?: number | null
+          spend_marketing?: number | null
+          spend_ops?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pulses_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pulses_founder_id_fkey"
+            columns: ["founder_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {
