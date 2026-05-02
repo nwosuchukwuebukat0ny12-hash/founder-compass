@@ -245,7 +245,7 @@ export default function FounderPortalPage() {
         onActionClick={() => navigate('/updates')}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 px-4 sm:px-6">
         
         {/* LEFT COLUMN: KPI Strip + Main Charts (Takes 9 columns) */}
         <div className="xl:col-span-9 space-y-6">

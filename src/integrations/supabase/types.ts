@@ -751,6 +751,7 @@ export type Database = {
           spend_infra: number | null
           spend_marketing: number | null
           spend_ops: number | null
+          target_mrr: number | null
           created_at: string | null
           updated_at: string | null
         }
@@ -776,6 +777,7 @@ export type Database = {
           spend_infra?: number | null
           spend_marketing?: number | null
           spend_ops?: number | null
+          target_mrr?: number | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -801,6 +803,7 @@ export type Database = {
           spend_infra?: number | null
           spend_marketing?: number | null
           spend_ops?: number | null
+          target_mrr?: number | null
           created_at?: string | null
           updated_at?: string | null
         }

@@ -159,7 +159,7 @@ export default function FounderFinancialsPage() {
     <div className="max-w-7xl mx-auto space-y-8 pb-20">
       
       {/* 1. CFO HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-4 sm:px-0">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-[#00D395]">
             <ShieldCheck className="w-4 h-4" />
@@ -181,7 +181,7 @@ export default function FounderFinancialsPage() {
       </div>
 
       {/* 2. CORE KPIS STRIP */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 px-4 sm:px-0">
         {[
           { label: "Cash in Bank", value: formatCurrency(startingCash), trend: "Latest", icon: Wallet, color: "#00D395" },
           { label: "Net Burn Rate", value: formatCurrency(proxies.currentBurn), trend: "Monthly", icon: TrendingDown, color: "#FF4D4F" },

@@ -289,7 +289,7 @@ export default function FounderTargetsPage() {
   return (
     <div className="min-h-screen text-[#1A1A1A] p-6 space-y-8 animate-in fade-in duration-500">
       {/* HEADER SECTION */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-gray-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-gray-200 -mx-6 px-6 sm:mx-0 sm:px-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-[#1A1A1A] flex items-center gap-3 font-serif">
             Command Center <Badge className="bg-[#00D395]/10 text-[#00D395] border-none font-bold">Live</Badge>
@@ -393,10 +393,10 @@ export default function FounderTargetsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 px-4 sm:px-0">
         
-        {/* LEFT COLUMN: STRATEGIC TARGETS (40%) */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* LEFT COLUMN: STRATEGIC TARGETS (5/12 columns on desktop) */}
+        <div className="lg:col-span-5 space-y-6 w-full">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500">Strategic Targets</h2>
             <Button variant="ghost" size="sm" className="text-xs text-gray-500 hover:text-[#1A1A1A] font-bold">View All</Button>

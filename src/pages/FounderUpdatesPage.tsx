@@ -44,7 +44,10 @@ export default function FounderUpdatesPage() {
     spendSalaries: "0",
     spendInfra: "0",
     spendMarketing: "0",
-    spendOps: "0"
+    spendOps: "0",
+    newCustomers: "",
+    lostCustomers: "",
+    targetMrr: ""
   });
 
   const [metrics, setMetrics] = useState<Record<string, string>>({});
@@ -145,7 +148,10 @@ export default function FounderUpdatesPage() {
         spend_salaries: parseFloat(formData.spendSalaries) || 0,
         spend_infra: parseFloat(formData.spendInfra) || 0,
         spend_marketing: parseFloat(formData.spendMarketing) || 0,
-        spend_ops: parseFloat(formData.spendOps) || 0
+        spend_ops: parseFloat(formData.spendOps) || 0,
+        new_users: parseInt(formData.newCustomers) || 0,
+        lost_users: parseInt(formData.lostCustomers) || 0,
+        target_mrr: parseFloat(formData.targetMrr) || 0
       });
 
       if (pulseError) throw pulseError;
@@ -186,7 +192,7 @@ export default function FounderUpdatesPage() {
   const sym = startup.currency === 'NGN' ? '₦' : startup.currency === 'GBP' ? '£' : startup.currency === 'EUR' ? '€' : '$';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-24">
+    <div className="max-w-4xl mx-auto space-y-8 pb-24 px-4 sm:px-6 lg:px-0">
       {/* Header Section */}
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold tracking-tight text-[#1A1A1A] font-serif">
@@ -200,7 +206,7 @@ export default function FounderUpdatesPage() {
       {isSuccess && <PulseCelebration onDismiss={() => setIsSuccess(false)} />}
 
       {/* TAB SWITCHER */}
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-full w-fit">
+      <div className="flex gap-2 p-1 bg-gray-100 rounded-full w-full sm:w-fit overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab("monthly")}
           className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
@@ -281,6 +287,52 @@ export default function FounderUpdatesPage() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Crucial for calculating your current runway.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:col-span-2 pt-4 border-t border-gray-50">
+                <div className="space-y-2">
+                  <Label htmlFor="targetMrr" className="text-gray-600 font-semibold flex items-center gap-2">
+                    <Target className="w-4 h-4 text-[#00D395]" /> Monthly Revenue Goal ({sym})
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+                    <Input 
+                      id="targetMrr" 
+                      type="number" 
+                      placeholder="Your goal for this month" 
+                      className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
+                      value={formData.targetMrr}
+                      onChange={(e) => handleInputChange('targetMrr', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-gray-600 font-semibold">User Growth Benchmarks</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">New Users</p>
+                      <Input 
+                        type="number" 
+                        placeholder="+" 
+                        className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
+                        value={formData.newCustomers}
+                        onChange={(e) => handleInputChange('newCustomers', e.target.value)}
+                      />
+                      <p className="text-[9px] text-gray-400 leading-snug">First-time customers or new subscribers this month.</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">Churned</p>
+                      <Input 
+                        type="number" 
+                        placeholder="-" 
+                        className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
+                        value={formData.lostCustomers}
+                        onChange={(e) => handleInputChange('lostCustomers', e.target.value)}
+                      />
+                      <p className="text-[9px] text-gray-400 leading-snug">Customers who cancelled or haven't returned in 30+ days.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-50">

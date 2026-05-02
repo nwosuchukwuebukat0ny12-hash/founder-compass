@@ -1,5 +1,7 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   LogOut, LayoutDashboard, FileText, Calendar, 
   User as UserIcon, Target, TrendingUp, BellRing,
@@ -178,6 +180,20 @@ export function FounderLayout({ children }: { children: React.ReactNode }) {
   const userEmail = user?.email || "founder@startup.com";
   const userInitial = userEmail.charAt(0).toUpperCase();
 
+  const { data: profile } = useQuery({
+    queryKey: ["founder-profile", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, role")
+        .eq("id", user!.id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-[#F9F6F2]">
@@ -194,12 +210,12 @@ export function FounderLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-5">
               <div className="flex items-center gap-3 pl-5 border-l border-gray-200">
                 <div className="hidden md:block text-right">
-                  <p className="text-xs font-bold text-[#1A1A1A] leading-none">Alex Rivera</p>
-                  <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">Founder & CEO</p>
+                  <p className="text-xs font-bold text-[#1A1A1A] leading-none">{profile?.full_name || "Founder"}</p>
+                  <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-tighter">{profile?.role === 'founder' ? 'Founder & CEO' : profile?.role}</p>
                 </div>
                 <Avatar className="h-8 w-8 border border-gray-100 ring-2 ring-[#00D395]/20">
                   <AvatarFallback className="bg-gradient-to-br from-[#00D395] to-[#878A22] text-white text-xs font-bold">
-                    AR
+                    {profile?.full_name ? profile.full_name.split(' ').map(n => n[0]).join('') : 'F'}
                   </AvatarFallback>
                 </Avatar>
               </div>
