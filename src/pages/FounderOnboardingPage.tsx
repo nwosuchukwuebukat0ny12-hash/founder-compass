@@ -79,6 +79,7 @@ export default function FounderOnboardingPage() {
     description: "",
     logoUrl: "",
     metricConfig: [] as string[],
+    spendLabels: ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"],
     socialLinks: {
       linkedin: "",
       instagram: "",
@@ -161,7 +162,7 @@ export default function FounderOnboardingPage() {
           description: formData.description,
           logo_url: formData.logoUrl,
           currency: formData.currency,
-          metric_config: formData.metricConfig
+          metric_config: [...formData.metricConfig, ...formData.spendLabels]
         } as any)
         .select()
         .single();
@@ -420,6 +421,30 @@ export default function FounderOnboardingPage() {
                 {formData.metricConfig.length === 0 && (
                   <p className="text-xs text-gray-400 italic text-center py-2">All custom metrics removed. The 4 core metrics above will still power your dashboard.</p>
                 )}
+              </div>
+              
+              {/* SECTION C: SPEND BREAKDOWN CATEGORIES */}
+              <div className="space-y-3 pt-4 border-t border-gray-50">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-3.5 h-3.5 text-[#878A22]" />
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Spend Breakdown Categories <span className="text-gray-400 ml-1 normal-case font-medium">(Customize labels for your burn charts)</span></p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {formData.spendLabels.map((label, index) => (
+                    <div key={index} className="space-y-1">
+                      <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Category {index + 1}</Label>
+                      <Input 
+                        value={label} 
+                        onChange={(e) => {
+                          const newLabels = [...formData.spendLabels];
+                          newLabels[index] = e.target.value;
+                          setFormData(p => ({ ...p, spendLabels: newLabels }));
+                        }}
+                        className="h-10 bg-white border-gray-100 text-sm" 
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
 
             </CardContent>

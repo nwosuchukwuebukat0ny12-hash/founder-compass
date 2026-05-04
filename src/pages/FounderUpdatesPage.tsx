@@ -190,6 +190,9 @@ export default function FounderUpdatesPage() {
 
   const currentMonth = new Date().toLocaleString('default', { month: 'long' });
   const sym = startup.currency === 'NGN' ? '₦' : startup.currency === 'GBP' ? '£' : startup.currency === 'EUR' ? '€' : '$';
+  
+  const metricConfig = (startup?.metric_config as string[]) || [];
+  const spendLabels = metricConfig.length > 4 ? metricConfig.slice(metricConfig.length - 4) : ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-24 px-4 sm:px-6 lg:px-0">
@@ -352,7 +355,7 @@ export default function FounderUpdatesPage() {
                 {showBreakdown && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="space-y-1.5">
-                      <Label htmlFor="spendSalaries" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Salaries & Talent</Label>
+                      <Label htmlFor="spendSalaries" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[0]}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
                         <Input 
@@ -365,7 +368,7 @@ export default function FounderUpdatesPage() {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="spendInfra" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Software & Infra</Label>
+                      <Label htmlFor="spendInfra" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[1]}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
                         <Input 
@@ -378,7 +381,7 @@ export default function FounderUpdatesPage() {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="spendMarketing" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Growth & Marketing</Label>
+                      <Label htmlFor="spendMarketing" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[2]}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
                         <Input 
@@ -391,7 +394,7 @@ export default function FounderUpdatesPage() {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="spendOps" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Ops & Admin</Label>
+                      <Label htmlFor="spendOps" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[3]}</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
                         <Input 

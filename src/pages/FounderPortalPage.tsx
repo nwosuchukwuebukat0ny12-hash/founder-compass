@@ -114,6 +114,13 @@ export default function FounderPortalPage() {
     enabled: !!user?.id,
   });
 
+  const metricConfig = (startup?.metric_config as string[]) || [];
+  const labelMrr = metricConfig[0] || "Monthly Recurring Rev";
+  const labelBurn = metricConfig[1] || "Net Burn Rate";
+  const labelUsers = metricConfig[2] || "Active Users (WAU)";
+  const labelChurn = metricConfig[3] || "Logo Churn Rate";
+  const currencySymbol = startup?.currency === 'NGN' ? '₦' : startup?.currency === 'GBP' ? '£' : startup?.currency === 'EUR' ? '€' : '$';
+
   const isDemoMode = pulses.length === 0;
 
   const chartData = !isDemoMode ? pulses.map(p => ({
@@ -150,11 +157,13 @@ export default function FounderPortalPage() {
     ? ((latestPulse.lost_users / latestPulse.active_users) * 100).toFixed(1)
     : "2.3";
 
+  const spendLabels = metricConfig.length > 4 ? metricConfig.slice(metricConfig.length - 4) : ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"];
+
   const burnBreakdownData = !isDemoMode ? [
-    { name: 'Salaries', value: latestPulse?.spend_salaries || 0, color: '#00D395' },
-    { name: 'Infrastructure', value: latestPulse?.spend_infra || 0, color: '#878A22' },
-    { name: 'Marketing', value: latestPulse?.spend_marketing || 0, color: '#F5A623' },
-    { name: 'Operations', value: latestPulse?.spend_ops || 0, color: '#FF4D4F' },
+    { name: spendLabels[0], value: latestPulse?.spend_salaries || 0, color: '#00D395' },
+    { name: spendLabels[1], value: latestPulse?.spend_infra || 0, color: '#878A22' },
+    { name: spendLabels[2], value: latestPulse?.spend_marketing || 0, color: '#F5A623' },
+    { name: spendLabels[3], value: latestPulse?.spend_ops || 0, color: '#FF4D4F' },
   ] : burnBreakdown;
 
   const hasBurnData = isDemoMode || burnBreakdownData.some(b => b.value > 0);
@@ -178,14 +187,6 @@ export default function FounderPortalPage() {
   }
 
   const founderDisplay = profile?.full_name || user?.email?.split('@')[0] || "Founder";
-
-  const metricConfig = (startup?.metric_config as string[]) || [];
-  const labelMrr = metricConfig[0] || "Monthly Recurring Rev";
-  const labelBurn = metricConfig[1] || "Net Burn Rate";
-  const labelUsers = metricConfig[2] || "Active Users (WAU)";
-  const labelChurn = metricConfig[3] || "Logo Churn Rate";
-
-  const currencySymbol = startup?.currency === 'NGN' ? '₦' : startup?.currency === 'GBP' ? '£' : startup?.currency === 'EUR' ? '€' : '$';
 
   if (startupLoading || pulsesLoading) {
     return (
@@ -357,23 +358,23 @@ export default function FounderPortalPage() {
               <CardContent>
                 <div className="h-[320px] w-full mt-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorMrr" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#00D395" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#00D395" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
+                    <BarChart data={chartData} margin={{ top: 20, right: 20, left: 40, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                       <XAxis dataKey="month" stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} dy={10} />
                       <YAxis stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val/1000}k`} dx={-10} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', color: '#1A1A1A', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                         itemStyle={{ color: '#1A1A1A', fontWeight: 600 }}
-                        cursor={{ stroke: '#eee', strokeWidth: 1, strokeDasharray: '4 4' }}
+                        cursor={{ fill: '#f9f9f9' }}
                       />
-                      <Area type="monotone" dataKey="mrr" stroke="#00D395" strokeWidth={3} fillOpacity={1} fill="url(#colorMrr)" activeDot={{ r: 6, fill: '#00D395', stroke: '#fff', strokeWidth: 2 }} />
-                    </AreaChart>
+                      <Bar 
+                        dataKey="mrr" 
+                        fill="#00D395" 
+                        radius={[6, 6, 0, 0]} 
+                        barSize={32}
+                        activeBar={{ fill: '#00A389' }}
+                      />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
@@ -440,7 +441,7 @@ export default function FounderPortalPage() {
                             <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: item.color }}></div>
                             <span className="text-xs text-gray-500 font-medium">{item.name}</span>
                           </div>
-                          <span className="text-xs font-bold text-[#1A1A1A] tabular-nums">${(item.value/1000).toFixed(1)}k</span>
+                          <span className="text-xs font-bold text-[#1A1A1A] tabular-nums">{currencySymbol}{(item.value/1000).toFixed(1)}k</span>
                         </div>
                       ))}
                     </div>
