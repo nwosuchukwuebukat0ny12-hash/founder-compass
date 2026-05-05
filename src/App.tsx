@@ -60,6 +60,7 @@ const RoleRouter = () => {
   if (isLoading) return <LoadingScreen />;
 
   const role = profile?.role;
+  const hasStartup = !!profile?.startup_id;
 
   if (role === 'admin') {
     return (
@@ -79,7 +80,8 @@ const RoleRouter = () => {
     );
   }
 
-  if (role === 'founder') {
+  // If they are a founder but haven't finished onboarding, send them to onboarding
+  if (role === 'founder' && hasStartup) {
     return (
       <FounderLayout>
         <Suspense fallback={<LoadingScreen />}>
@@ -99,7 +101,7 @@ const RoleRouter = () => {
     );
   }
 
-  // No role (New user)
+  // No role or No startup (New user)
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
