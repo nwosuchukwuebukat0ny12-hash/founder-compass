@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      evaluations: {
+        Row: {
+          author_id: string | null
+          business_model: number | null
+          clarity: number | null
+          created_at: string
+          financials: number | null
+          id: string
+          name: string
+          pitch: number | null
+          status: string | null
+          traction: number | null
+        }
+        Insert: {
+          author_id?: string | null
+          business_model?: number | null
+          clarity?: number | null
+          created_at?: string
+          financials?: number | null
+          id?: string
+          name: string
+          pitch?: number | null
+          status?: string | null
+          traction?: number | null
+        }
+        Update: {
+          author_id?: string | null
+          business_model?: number | null
+          clarity?: number | null
+          created_at?: string
+          financials?: number | null
+          id?: string
+          name?: string
+          pitch?: number | null
+          status?: string | null
+          traction?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluations_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_attendees: {
         Row: {
           created_at: string | null
@@ -484,8 +531,10 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           email: string
+          first_name: string | null
           full_name: string | null
           id: string
+          last_name: string | null
           role: string | null
           startup_id: string | null
           phone_number: string | null
@@ -495,8 +544,10 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           email: string
+          first_name?: string | null
           full_name?: string | null
           id: string
+          last_name?: string | null
           role?: string | null
           startup_id?: string | null
           phone_number?: string | null
@@ -506,8 +557,10 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           email?: string
+          first_name?: string | null
           full_name?: string | null
           id?: string
+          last_name?: string | null
           role?: string | null
           startup_id?: string | null
           phone_number?: string | null
@@ -538,6 +591,7 @@ export type Database = {
           founder_name: string
           id: string
           industry: string | null
+          institutional_status: string | null
           is_delayed: boolean | null
           key_results: string | null
           logo_url: string | null
@@ -576,6 +630,7 @@ export type Database = {
           founder_name: string
           id?: string
           industry?: string | null
+          institutional_status?: string | null
           is_delayed?: boolean | null
           key_results?: string | null
           logo_url?: string | null
@@ -611,6 +666,7 @@ export type Database = {
           founder_name?: string
           id?: string
           industry?: string | null
+          institutional_status?: string | null
           is_delayed?: boolean | null
           key_results?: string | null
           logo_url?: string | null

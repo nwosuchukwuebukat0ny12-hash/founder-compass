@@ -1,4 +1,4 @@
-import { LayoutDashboard, Rocket, FileText, Settings, LogOut, Calendar } from "lucide-react";
+import { LayoutDashboard, Rocket, FileText, Settings, LogOut, Calendar, GraduationCap } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ import {
 const mainNavItems = [
   { title: "Overview", url: "/", icon: LayoutDashboard },
   { title: "Startups", url: "/startups", icon: Rocket },
+  { title: "Grading System", url: "/grading", icon: GraduationCap },
   { title: "Events", url: "/events", icon: Calendar },
   { title: "Document Vault", url: "/documents", icon: FileText },
 ];

@@ -27,35 +27,7 @@ const COUNTRY_CODES = [
 const SME_SECTORS = ["Food & Beverage", "Retail & Fashion", "Beauty & Wellness", "Professional Services", "Logistics & Transport", "Health & Medical", "Creative & Media", "Other"];
 const TECH_SECTORS = ["FinTech", "HealthTech", "EdTech", "E-commerce", "SaaS (B2B)", "AgTech", "AI / ML", "Logistics Tech", "Other"];
 
-// Core metrics always tracked for every business — these power the main dashboard charts
-const CORE_METRICS = [
-  { key: "revenue", label: "Monthly Revenue", description: "Total income this month" },
-  { key: "expenses", label: "Monthly Expenses", description: "Total costs this month" },
-  { key: "new_customers", label: "New Customers", description: "Customers gained this month" },
-  { key: "lost_customers", label: "Lost Customers (Churn)", description: "Customers who left this month" },
-];
-
-const METRIC_TEMPLATES: Record<string, string[]> = {
-  // SMEs
-  "Food & Beverage": ["Total Revenue", "Total Expenses", "Table Turnover", "Avg Order Value", "Foot Traffic"],
-  "Retail & Fashion": ["Total Revenue", "Total Expenses", "Inventory Value", "Avg Order Value", "Foot Traffic"],
-  "Beauty & Wellness": ["Total Revenue", "Total Expenses", "Total Appointments", "Repeat Rate", "Walk-ins"],
-  "Professional Services": ["Total Revenue", "Total Expenses", "Active Clients", "Billable Hours", "Lead Conversion"],
-  "Logistics & Transport": ["Total Revenue", "Total Expenses", "Total Deliveries", "Fuel Costs", "Vehicle Uptime"],
-  "Health & Medical": ["Total Revenue", "Total Expenses", "Patient Visits", "Returning Patients", "Avg Wait Time"],
-  "Creative & Media": ["Total Revenue", "Total Expenses", "Active Projects", "Client Retention", "Avg Project Value"],
-  // Tech Startups
-  "FinTech": ["MRR", "Monthly Burn", "Active Users", "Transaction Volume", "CAC"],
-  "HealthTech": ["MRR", "Monthly Burn", "Active Users", "Patient Consults", "CAC"],
-  "EdTech": ["MRR", "Monthly Burn", "Active Students", "Course Completion %", "CAC"],
-  "E-commerce": ["MRR", "Monthly Burn", "Active Customers", "GMV", "CAC"],
-  "SaaS (B2B)": ["MRR", "Monthly Burn", "Active Accounts", "Churn Rate", "CAC"],
-  "AgTech": ["MRR", "Monthly Burn", "Active Users", "Platform Usage", "CAC"],
-  "AI / ML": ["MRR", "Monthly Burn", "API Calls", "Active Users", "CAC"],
-  "Logistics Tech": ["MRR", "Monthly Burn", "Active Users", "Deliveries Routed", "CAC"],
-  // Default
-  "Other": ["Total Revenue", "Total Expenses", "Profit Margin", "Active Customers", "CAC"]
-};
+const DEFAULT_METRICS = ["MRR", "Revenue Target", "Cash Balance", "Monthly Burn", "Runway", "Total Active Customers"];
 
 export default function FounderOnboardingPage() {
   const { user } = useAuth();
@@ -66,20 +38,19 @@ export default function FounderOnboardingPage() {
   const [selectedCountryCode, setSelectedCountryCode] = useState("+234");
 
   const [formData, setFormData] = useState({
-    founderName: "",
+    firstName: "",
+    lastName: "",
     phoneNumber: "",
     country: "",
     startupName: "",
-    businessModel: "tech_startup",
     sector: "",
     customSector: "",
     currency: "NGN",
-    currentStage: "",
+    category: "Ideation",
+    institutionalStatus: "",
     website: "",
     description: "",
     logoUrl: "",
-    metricConfig: [] as string[],
-    spendLabels: ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"],
     socialLinks: {
       linkedin: "",
       instagram: "",
@@ -87,14 +58,6 @@ export default function FounderOnboardingPage() {
       tiktok: ""
     }
   });
-
-  // Automatically update metrics when sector changes
-  useEffect(() => {
-    const sectorToUse = formData.sector === "Other" ? "Other" : formData.sector;
-    if (sectorToUse && METRIC_TEMPLATES[sectorToUse]) {
-      setFormData(prev => ({ ...prev, metricConfig: METRIC_TEMPLATES[sectorToUse] }));
-    }
-  }, [formData.sector]);
 
 
   const nextStep = () => setStep(s => s + 1);
@@ -154,15 +117,15 @@ export default function FounderOnboardingPage() {
         .from("startups")
         .insert({
           name: formData.startupName,
-          founder_name: formData.founderName,
+          founder_name: `${formData.firstName} ${formData.lastName}`.trim(),
           sector: formData.sector === 'Other' ? formData.customSector : formData.sector,
-          current_stage: formData.currentStage,
-          business_model: formData.businessModel,
+          current_stage: formData.category,
+          institutional_status: formData.institutionalStatus,
           website: formData.website,
           description: formData.description,
           logo_url: formData.logoUrl,
           currency: formData.currency,
-          metric_config: [...formData.metricConfig, ...formData.spendLabels]
+          metric_config: DEFAULT_METRICS
         } as any)
         .select()
         .single();
@@ -173,7 +136,9 @@ export default function FounderOnboardingPage() {
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
-          full_name: formData.founderName,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          full_name: `${formData.firstName} ${formData.lastName}`.trim(),
           role: "founder",
           startup_id: startupData.id,
           phone_number: fullPhoneNumber,
@@ -184,7 +149,7 @@ export default function FounderOnboardingPage() {
 
       if (profileError) throw profileError;
 
-      toast({ title: "Profile Ready!", description: "Welcome to the Lab, " + formData.founderName });
+      toast({ title: "Profile Ready!", description: "Welcome to the Lab, " + formData.firstName });
       window.location.href = "/";
       
     } catch (error: any) {
@@ -204,10 +169,10 @@ export default function FounderOnboardingPage() {
           <Sparkles className="w-6 h-6 text-[#00D395]" />
         </div>
         <h1 className="text-2xl font-serif font-semibold text-[#1A1A1A]">
-          {formData.founderName ? `Welcome, ${formData.founderName}` : "Join the Lab"}
+          {formData.firstName ? `Welcome, ${formData.firstName}` : "Join the Lab"}
         </h1>
         <div className="flex items-center justify-center gap-1">
-          {[1, 2, 3, 4, 5].map(s => (
+          {[1, 2, 3, 4].map(s => (
             <div key={s} className={`h-1 rounded-full transition-all duration-300 ${step >= s ? 'w-6 bg-[#00D395]' : 'w-2 bg-gray-200'}`} />
           ))}
         </div>
@@ -225,9 +190,15 @@ export default function FounderOnboardingPage() {
               <CardDescription className="font-medium">Let's start with who you are.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="founderName" className="text-xs font-bold uppercase tracking-widest text-gray-500">Full Name<span className="text-red-500 ml-1">*</span></Label>
-                <Input id="founderName" name="founderName" value={formData.founderName} onChange={handleChange} placeholder="e.g. Amaobi Okafor" className="h-12 bg-white border-gray-100" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName" className="text-xs font-bold uppercase tracking-widest text-gray-500">First Name<span className="text-red-500 ml-1">*</span></Label>
+                  <Input id="firstName" name="firstName" value={formData.firstName} onChange={handleChange} placeholder="e.g. Amaobi" className="h-12 bg-white border-gray-100" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName" className="text-xs font-bold uppercase tracking-widest text-gray-500">Last Name<span className="text-red-500 ml-1">*</span></Label>
+                  <Input id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} placeholder="e.g. Okafor" className="h-12 bg-white border-gray-100" />
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
@@ -253,7 +224,7 @@ export default function FounderOnboardingPage() {
               </div>
             </CardContent>
             <CardFooter className="bg-gray-50/50 p-6">
-              <Button onClick={nextStep} className="w-full bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.founderName || !formData.phoneNumber || !formData.country}>
+              <Button onClick={nextStep} className="w-full bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.country}>
                 Next: Business Details <ChevronRight className="ml-2 w-4 h-4" />
               </Button>
             </CardFooter>
@@ -275,23 +246,31 @@ export default function FounderOnboardingPage() {
                 <Input id="startupName" name="startupName" value={formData.startupName} onChange={handleChange} placeholder="e.g. Spendwise" className="h-12 bg-white border-gray-100" />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-gray-500">Business Model<span className="text-red-500 ml-1">*</span></Label>
-                <div className="grid grid-cols-2 gap-3">
+                <Label className="text-xs font-bold uppercase tracking-widest text-gray-500">Category<span className="text-red-500 ml-1">*</span></Label>
+                <div className="grid grid-cols-3 gap-3">
                   <button 
-                    onClick={() => setFormData(p => ({ ...p, businessModel: 'tech_startup' }))}
-                    className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${formData.businessModel === 'tech_startup' ? 'border-[#00D395] bg-[#00D395]/5' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                    onClick={() => setFormData(p => ({ ...p, category: 'Ideation' }))}
+                    className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${formData.category === 'Ideation' ? 'border-[#00D395] bg-[#00D395]/5' : 'border-gray-100 bg-white hover:border-gray-200'}`}
                   >
-                    <Rocket className={`w-5 h-5 ${formData.businessModel === 'tech_startup' ? 'text-[#00D395]' : 'text-gray-400'}`} />
-                    <p className="text-sm font-bold">Tech Startup</p>
-                    <p className="text-[10px] text-gray-500">SaaS, App, AI, etc.</p>
+                    <Rocket className={`w-5 h-5 ${formData.category === 'Ideation' ? 'text-[#00D395]' : 'text-gray-400'}`} />
+                    <p className="text-sm font-bold">Ideation</p>
+                    <p className="text-[10px] text-gray-500">Early stage</p>
                   </button>
                   <button 
-                    onClick={() => setFormData(p => ({ ...p, businessModel: 'sme', sector: '' }))}
-                    className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${formData.businessModel === 'sme' ? 'border-[#00D395] bg-[#00D395]/5' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                    onClick={() => setFormData(p => ({ ...p, category: 'SME' }))}
+                    className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${formData.category === 'SME' ? 'border-[#00D395] bg-[#00D395]/5' : 'border-gray-100 bg-white hover:border-gray-200'}`}
                   >
-                    <MapPin className={`w-5 h-5 ${formData.businessModel === 'sme' ? 'text-[#00D395]' : 'text-gray-400'}`} />
+                    <MapPin className={`w-5 h-5 ${formData.category === 'SME' ? 'text-[#00D395]' : 'text-gray-400'}`} />
                     <p className="text-sm font-bold">SME</p>
-                    <p className="text-[10px] text-gray-500">Retail, F&B, Services</p>
+                    <p className="text-[10px] text-gray-500">Retail, Services</p>
+                  </button>
+                  <button 
+                    onClick={() => setFormData(p => ({ ...p, category: 'Innovators' }))}
+                    className={`p-4 rounded-2xl border-2 transition-all text-left space-y-1 ${formData.category === 'Innovators' ? 'border-[#00D395] bg-[#00D395]/5' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                  >
+                    <Sparkles className={`w-5 h-5 ${formData.category === 'Innovators' ? 'text-[#00D395]' : 'text-gray-400'}`} />
+                    <p className="text-sm font-bold">Innovators</p>
+                    <p className="text-[10px] text-gray-500">Scaling tech</p>
                   </button>
                 </div>
               </div>
@@ -303,7 +282,7 @@ export default function FounderOnboardingPage() {
                       <SelectValue placeholder="Select Sector" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(formData.businessModel === 'tech_startup' ? TECH_SECTORS : SME_SECTORS).map(s => (
+                      {(formData.category === 'SME' ? SME_SECTORS : TECH_SECTORS).map(s => (
                         <SelectItem key={s} value={s}>{s}</SelectItem>
                       ))}
                     </SelectContent>
@@ -334,131 +313,29 @@ export default function FounderOnboardingPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-widest text-gray-500">Current Stage<span className="text-red-500 ml-1">*</span></Label>
-                <Select value={formData.currentStage} onValueChange={(v) => setFormData(p => ({ ...p, currentStage: v }))}>
+                <Label className="text-xs font-bold uppercase tracking-widest text-gray-500">Status<span className="text-red-500 ml-1">*</span></Label>
+                <Select value={formData.institutionalStatus} onValueChange={(v) => setFormData(p => ({ ...p, institutionalStatus: v }))}>
                   <SelectTrigger className="h-12 border-gray-100">
-                    <SelectValue placeholder="Select Stage" />
+                    <SelectValue placeholder="Select Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Early">Early (Ideation)</SelectItem>
-                    <SelectItem value="Growth">Growth (Traction)</SelectItem>
-                    <SelectItem value="Scaling">Scaling</SelectItem>
+                    <SelectItem value="Student">Student Startup</SelectItem>
+                    <SelectItem value="Alumni">Alumni Startup</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </CardContent>
             <CardFooter className="bg-gray-50/50 p-6 flex gap-3">
               <Button variant="ghost" onClick={prevStep} className="h-12 font-bold px-6"><ChevronLeft className="mr-2 w-4 h-4" /> Back</Button>
-              <Button onClick={nextStep} className="flex-1 bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.startupName || !formData.sector || !formData.currency || !formData.currentStage}>
-                Next: Metrics Setup <ChevronRight className="ml-2 w-4 h-4" />
+              <Button onClick={nextStep} className="flex-1 bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.startupName || !formData.sector || !formData.currency || !formData.category || !formData.institutionalStatus}>
+                Next: Digital Presence <ChevronRight className="ml-2 w-4 h-4" />
               </Button>
             </CardFooter>
           </Card>
         )}
 
-        {/* STEP 3: METRICS SETUP */}
+        {/* STEP 3: SOCIAL HUB */}
         {step === 3 && (
-          <Card className="bg-white border-gray-200 shadow-xl shadow-gray-200/50 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <CardHeader>
-              <CardTitle className="text-xl font-bold flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-[#00D395]" /> Metrics Configurator
-              </CardTitle>
-              <CardDescription className="font-medium">Your dashboard is built around these metrics.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-
-              {/* SECTION A: CORE METRICS (Fixed) */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-3.5 h-3.5 text-[#00D395]" />
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Core Metrics <span className="text-[#00D395] ml-1">(Always Included)</span></p>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  {CORE_METRICS.map((m) => (
-                    <div key={m.key} className="flex items-center justify-between p-3 bg-[#00D395]/5 border border-[#00D395]/20 rounded-xl">
-                      <div>
-                        <p className="text-sm font-bold text-[#1A1A1A]">{m.label}</p>
-                        <p className="text-[10px] text-gray-400 font-medium">{m.description}</p>
-                      </div>
-                      <span className="text-[10px] font-bold text-[#00D395] bg-[#00D395]/10 px-2 py-0.5 rounded-full">Fixed</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* SECTION B: CUSTOM SECTOR METRICS (Editable) */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="w-3.5 h-3.5 text-[#F5A623]" />
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Custom Metrics <span className="text-gray-400 ml-1 normal-case font-medium">(Based on your sector — edit or remove)</span></p>
-                </div>
-                <div className="space-y-2">
-                  {formData.metricConfig.map((metric, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input 
-                        value={metric} 
-                        onChange={(e) => {
-                          const newConfig = [...formData.metricConfig];
-                          newConfig[index] = e.target.value;
-                          setFormData(p => ({ ...p, metricConfig: newConfig }));
-                        }}
-                        placeholder={`e.g. Metric ${index + 1}`} 
-                        className="h-11 bg-white border-gray-100 flex-1" 
-                      />
-                      <button
-                        onClick={() => {
-                          const newConfig = formData.metricConfig.filter((_, i) => i !== index);
-                          setFormData(p => ({ ...p, metricConfig: newConfig }));
-                        }}
-                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors flex-shrink-0"
-                        title="Remove this metric"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {formData.metricConfig.length === 0 && (
-                  <p className="text-xs text-gray-400 italic text-center py-2">All custom metrics removed. The 4 core metrics above will still power your dashboard.</p>
-                )}
-              </div>
-              
-              {/* SECTION C: SPEND BREAKDOWN CATEGORIES */}
-              <div className="space-y-3 pt-4 border-t border-gray-50">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="w-3.5 h-3.5 text-[#878A22]" />
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Spend Breakdown Categories <span className="text-gray-400 ml-1 normal-case font-medium">(Customize labels for your burn charts)</span></p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {formData.spendLabels.map((label, index) => (
-                    <div key={index} className="space-y-1">
-                      <Label className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Category {index + 1}</Label>
-                      <Input 
-                        value={label} 
-                        onChange={(e) => {
-                          const newLabels = [...formData.spendLabels];
-                          newLabels[index] = e.target.value;
-                          setFormData(p => ({ ...p, spendLabels: newLabels }));
-                        }}
-                        className="h-10 bg-white border-gray-100 text-sm" 
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-            </CardContent>
-            <CardFooter className="bg-gray-50/50 p-6 flex gap-3">
-              <Button variant="ghost" onClick={prevStep} className="h-12 font-bold px-6"><ChevronLeft className="mr-2 w-4 h-4" /> Back</Button>
-              <Button onClick={nextStep} className="flex-1 bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold">
-                Next: Presence <ChevronRight className="ml-2 w-4 h-4" />
-              </Button>
-            </CardFooter>
-          </Card>
-        )}
-
-        {/* STEP 4: SOCIAL HUB */}
-        {step === 4 && (
           <Card className="bg-white border-gray-200 shadow-xl shadow-gray-200/50 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             <CardHeader>
               <CardTitle className="text-xl font-bold flex items-center gap-2">
@@ -504,8 +381,8 @@ export default function FounderOnboardingPage() {
           </Card>
         )}
 
-        {/* STEP 5: BRANDING */}
-        {step === 5 && (
+        {/* STEP 4: BRANDING */}
+        {step === 4 && (
           <Card className="bg-white border-gray-200 shadow-xl shadow-gray-200/50 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
             <CardHeader>
               <CardTitle className="text-xl font-bold flex items-center gap-2">
@@ -523,7 +400,7 @@ export default function FounderOnboardingPage() {
                   </div>
                 )}
                 <div className="text-center">
-                  <p className="text-sm font-bold text-gray-700">Company Logo<span className="text-red-500 ml-1">*</span></p>
+                  <p className="text-sm font-bold text-gray-700">Company Logo <span className="text-gray-400 font-medium text-xs">(Optional)</span></p>
                   <p className="text-[10px] text-gray-400 font-medium">Click to upload SVG or PNG</p>
                 </div>
                 <input type="file" onChange={handleLogoUpload} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" />
@@ -542,7 +419,7 @@ export default function FounderOnboardingPage() {
             </CardContent>
             <CardFooter className="bg-gray-50/50 p-6 flex gap-3">
               <Button variant="ghost" onClick={prevStep} className="h-12 font-bold px-6"><ChevronLeft className="mr-2 w-4 h-4" /> Back</Button>
-              <Button onClick={handleSubmit} className="flex-1 bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={isSubmitting || !formData.logoUrl || !formData.description}>
+              <Button onClick={handleSubmit} className="flex-1 bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={isSubmitting || !formData.description}>
                 {isSubmitting ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Launching...</>
                 ) : (

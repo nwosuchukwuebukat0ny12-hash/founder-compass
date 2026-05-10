@@ -6,7 +6,7 @@ import {
   LogOut, LayoutDashboard, FileText, Calendar, 
   User as UserIcon, Target, TrendingUp, BellRing,
   ChevronDown, Building2, Users2, ShieldCheck,
-  Briefcase
+  Briefcase, BarChart3, History
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,6 +43,8 @@ const navGroups = [
       { title: "Targets & Tasks", url: "/targets", icon: Target },
       { title: "Financials", url: "/financials", icon: TrendingUp },
       { title: "Reporting Hub", url: "/updates", icon: BellRing },
+      { title: "Updates History", url: "/history", icon: History },
+      { title: "Custom Metrics", url: "/custom-metrics", icon: BarChart3 },
     ]
   },
   {
@@ -54,7 +56,6 @@ const navGroups = [
         isGroup: true,
         children: [
           { title: "Fact Sheet", url: "/profile", icon: Briefcase },
-          { title: "Team & Ops", url: "/team", icon: Users2 },
           { title: "Document Vault", url: "/documents", icon: ShieldCheck },
         ]
       },

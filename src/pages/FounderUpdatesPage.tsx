@@ -35,36 +35,24 @@ export default function FounderUpdatesPage() {
 
   // Form State
   const [formData, setFormData] = useState({
+    mrr: "",
+    revenueTarget: "",
+    monthlyBurn: "",
     cashInBank: "",
+    activeUsers: "",
     teamSize: "",
     fundraising: "",
-    win: "",
-    blocker: "",
-    ask: "",
     spendSalaries: "0",
     spendInfra: "0",
     spendMarketing: "0",
     spendOps: "0",
     newCustomers: "",
-    lostCustomers: "",
-    targetMrr: ""
+    lostCustomers: ""
   });
 
-  const [metrics, setMetrics] = useState<Record<string, string>>({});
-
+  // We no longer need the generic metrics loop as we've standardized the form
   useEffect(() => {
-    if (startup?.metric_config) {
-      const initial: Record<string, string> = {};
-      (startup.metric_config as string[]).forEach(m => initial[m] = "");
-      setMetrics(initial);
-    } else if (startup) {
-      // Fallback for old accounts
-      setMetrics({
-        "MRR": "",
-        "Monthly Burn": "",
-        "Active Users": ""
-      });
-    }
+    // This effect is now empty or can be removed
   }, [startup]);
 
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -126,24 +114,17 @@ export default function FounderUpdatesPage() {
       
       const currentMonthStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
       // Extract core financials if they exist in custom metrics
-      const mrrKey = Object.keys(metrics).find(k => k.toLowerCase().includes('revenue') || k.toLowerCase().includes('mrr'));
-      const expenseKey = Object.keys(metrics).find(k => k.toLowerCase().includes('expense') || k.toLowerCase().includes('burn'));
-      const mrrValue = mrrKey ? parseFloat(metrics[mrrKey]) || 0 : 0;
-      const expenseValue = expenseKey ? parseFloat(metrics[expenseKey]) || 0 : 0;
-
       // 1. Insert the detailed pulse report
       const { error: pulseError } = await supabase.from("pulses").insert({
         startup_id: startup.id,
         founder_id: user?.id,
         month: currentMonthStr,
-        mrr: mrrValue,
-        expenses: expenseValue,
+        mrr: parseFloat(formData.mrr) || 0,
+        expenses: parseFloat(formData.monthlyBurn) || 0,
         cash_in_bank: parseFloat(formData.cashInBank) || 0,
-        custom_kpis: metrics,
+        custom_kpis: {},
+        active_users: parseInt(formData.activeUsers) || 0,
         team_size: parseInt(formData.teamSize) || 0,
-        win: formData.win,
-        blocker: formData.blocker,
-        ask: formData.ask,
         fundraising_status: formData.fundraising,
         spend_salaries: parseFloat(formData.spendSalaries) || 0,
         spend_infra: parseFloat(formData.spendInfra) || 0,
@@ -151,12 +132,13 @@ export default function FounderUpdatesPage() {
         spend_ops: parseFloat(formData.spendOps) || 0,
         new_users: parseInt(formData.newCustomers) || 0,
         lost_users: parseInt(formData.lostCustomers) || 0,
-        target_mrr: parseFloat(formData.targetMrr) || 0
+        target_mrr: parseFloat(formData.revenueTarget) || 0
       });
 
       if (pulseError) throw pulseError;
 
       // 2. Sync the latest metrics back to the 'startups' table for fast list-view access
+      const expenseValue = parseFloat(formData.monthlyBurn) || 0;
       const runway = expenseValue > 0 
         ? Math.round((parseFloat(formData.cashInBank) || 0) / expenseValue) 
         : 99; // Infinity or high number
@@ -254,29 +236,58 @@ export default function FounderUpdatesPage() {
               <CardDescription className="text-gray-500 font-medium">Financial and growth metrics for {currentMonth}.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {Object.keys(metrics).map((metricName, index) => {
-                const isFinancial = metricName.toLowerCase().includes('revenue') || metricName.toLowerCase().includes('expense') || metricName.toLowerCase().includes('mrr') || metricName.toLowerCase().includes('burn') || metricName.toLowerCase().includes('cost');
-                return (
-                  <div key={index} className="space-y-2">
-                    <Label className="text-gray-600 font-semibold">{metricName}</Label>
-                    <div className="relative">
-                      {isFinancial && (
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                      )}
-                      <Input 
-                        type="number" 
-                        placeholder="0" 
-                        className={`${isFinancial ? 'pl-8' : ''} bg-white border-gray-200 text-[#1A1A1A]`} 
-                        required
-                        value={metrics[metricName]}
-                        onChange={(e) => setMetrics(prev => ({ ...prev, [metricName]: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="cashInBank" className="text-gray-600 font-semibold">Total Cash in Bank ({sym})</Label>
+              <div className="space-y-2">
+                <Label htmlFor="mrr" className="text-gray-600 font-semibold">Monthly Revenue / MRR ({sym})</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+                  <Input 
+                    id="mrr" 
+                    type="number" 
+                    placeholder="0" 
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
+                    required
+                    value={formData.mrr}
+                    onChange={(e) => handleInputChange('mrr', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="revenueTarget" className="text-gray-600 font-semibold flex items-center gap-2">
+                  <Target className="w-4 h-4 text-[#00D395]" /> Revenue Target ({sym})
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+                  <Input 
+                    id="revenueTarget" 
+                    type="number" 
+                    placeholder="Your goal for this month" 
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
+                    required
+                    value={formData.revenueTarget}
+                    onChange={(e) => handleInputChange('revenueTarget', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="monthlyBurn" className="text-gray-600 font-semibold">Monthly Expenses / Burn ({sym})</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+                  <Input 
+                    id="monthlyBurn" 
+                    type="number" 
+                    placeholder="Total costs this month" 
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
+                    required
+                    value={formData.monthlyBurn}
+                    onChange={(e) => handleInputChange('monthlyBurn', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cashInBank" className="text-gray-600 font-semibold">Cash Balance / Cash in Bank ({sym})</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
                   <Input 
@@ -289,50 +300,46 @@ export default function FounderUpdatesPage() {
                     onChange={(e) => handleInputChange('cashInBank', e.target.value)}
                   />
                 </div>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Crucial for calculating your current runway.</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:col-span-2 pt-4 border-t border-gray-50">
-                <div className="space-y-2">
-                  <Label htmlFor="targetMrr" className="text-gray-600 font-semibold flex items-center gap-2">
-                    <Target className="w-4 h-4 text-[#00D395]" /> Monthly Revenue Goal ({sym})
-                  </Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+              <div className="space-y-2 md:col-span-2 pt-4 border-t border-gray-50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="activeUsers" className="text-gray-600 font-semibold">Total Active Customers</Label>
                     <Input 
-                      id="targetMrr" 
+                      id="activeUsers" 
                       type="number" 
-                      placeholder="Your goal for this month" 
-                      className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
-                      value={formData.targetMrr}
-                      onChange={(e) => handleInputChange('targetMrr', e.target.value)}
+                      placeholder="Total current users" 
+                      className="bg-white border-gray-200 text-[#1A1A1A]" 
+                      required
+                      value={formData.activeUsers}
+                      onChange={(e) => handleInputChange('activeUsers', e.target.value)}
                     />
+                    <p className="text-[9px] text-gray-400 leading-snug">Total number of paying or active users at month end.</p>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-600 font-semibold">User Growth Benchmarks</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">New Users</p>
-                      <Input 
-                        type="number" 
-                        placeholder="+" 
-                        className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
-                        value={formData.newCustomers}
-                        onChange={(e) => handleInputChange('newCustomers', e.target.value)}
-                      />
-                      <p className="text-[9px] text-gray-400 leading-snug">First-time customers or new subscribers this month.</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Churned</p>
-                      <Input 
-                        type="number" 
-                        placeholder="-" 
-                        className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
-                        value={formData.lostCustomers}
-                        onChange={(e) => handleInputChange('lostCustomers', e.target.value)}
-                      />
-                      <p className="text-[9px] text-gray-400 leading-snug">Customers who cancelled or haven't returned in 30+ days.</p>
+                  <div className="space-y-2">
+                    <Label className="text-gray-600 font-semibold">User Growth Benchmarks</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">New Users</p>
+                        <Input 
+                          type="number" 
+                          placeholder="+" 
+                          className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
+                          value={formData.newCustomers}
+                          onChange={(e) => handleInputChange('newCustomers', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Churned</p>
+                        <Input 
+                          type="number" 
+                          placeholder="-" 
+                          className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
+                          value={formData.lostCustomers}
+                          onChange={(e) => handleInputChange('lostCustomers', e.target.value)}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -422,23 +429,10 @@ export default function FounderUpdatesPage() {
                   onChange={(e) => handleInputChange('teamSize', e.target.value)}
                 />
               </div>
-            </CardContent>
-          </Card>
 
-          {/* SECTION B: THE NARRATIVE */}
-          <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-gray-100 bg-gray-50/50">
-              <CardTitle className="text-lg font-bold text-[#1A1A1A] flex items-center">
-                <Target className="w-5 h-5 mr-3 text-[#F5A623]" />
-                2. The Narrative
-              </CardTitle>
-              <CardDescription className="text-gray-500 font-medium">Context behind the numbers.</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-6">
-              
-              <div className="space-y-2">
+              <div className="space-y-2 pt-4 border-t border-gray-50">
                 <Label htmlFor="fundraising" className="text-gray-600 font-semibold">Are you currently fundraising?</Label>
-                <Select required onValueChange={(val) => handleInputChange('fundraising', val)}>
+                <Select onValueChange={(val) => handleInputChange('fundraising', val)}>
                   <SelectTrigger className="bg-white border-gray-200 text-[#1A1A1A]">
                     <SelectValue placeholder="Select status..." />
                   </SelectTrigger>
@@ -449,58 +443,9 @@ export default function FounderUpdatesPage() {
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="win" className="text-gray-600 font-semibold">Biggest Win This Month</Label>
-                <Textarea 
-                  id="win" 
-                  placeholder="e.g. Closed a $50k enterprise deal, or shipped the mobile app." 
-                  className="bg-white border-gray-200 text-[#1A1A1A] min-h-[100px] resize-y" 
-                  required
-                  value={formData.win}
-                  onChange={(e) => handleInputChange('win', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="blocker" className="text-gray-600 font-semibold flex items-center justify-between">
-                  <span>Biggest Blocker <span className="text-gray-400 font-bold uppercase tracking-widest text-[10px] ml-2">(Optional)</span></span>
-                </Label>
-                <Textarea 
-                  id="blocker" 
-                  placeholder="e.g. Struggling to hire a lead engineer." 
-                  className="bg-white border-gray-200 text-[#1A1A1A] min-h-[100px] resize-y" 
-                  value={formData.blocker}
-                  onChange={(e) => handleInputChange('blocker', e.target.value)}
-                />
-              </div>
             </CardContent>
-          </Card>
-
-          {/* SECTION C: THE LAB ASK */}
-          <Card className="bg-[#00D395]/5 border-[#00D395]/20 shadow-sm rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-[#00D395]/10 bg-[#00D395]/10">
-              <CardTitle className="text-lg font-bold text-[#1A1A1A] flex items-center">
-                <MessageSquare className="w-5 h-5 mr-3 text-[#00D395]" />
-                3. How Can We Help?
-              </CardTitle>
-              <CardDescription className="text-[#00D395]/80 font-medium">The most important field in this form.</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="space-y-2">
-                <Label htmlFor="ask" className="text-gray-700 text-base font-bold">What is ONE specific thing the Lab can help you with right now?</Label>
-                <p className="text-xs text-gray-500 mb-2 font-medium">Be specific: "Intros to Seed investors in Fintech" or "Feedback on our new pricing model."</p>
-                <Textarea 
-                  id="ask" 
-                  placeholder="I need help with..." 
-                  className="bg-white border-white shadow-sm text-[#1A1A1A] min-h-[120px] resize-y focus-visible:ring-[#00D395]" 
-                  required
-                  value={formData.ask}
-                  onChange={(e) => handleInputChange('ask', e.target.value)}
-                />
-              </div>
-            </CardContent>
-            <CardFooter className="bg-[#00D395]/10 pt-6 pb-6 border-t border-[#00D395]/10 flex justify-end">
+            <CardFooter className="bg-gray-50/50 pt-6 pb-6 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400 font-medium">Wins, blockers &amp; asks? Post them in <strong className="text-[#635BFF]">Updates History</strong>.</p>
               <Button 
                 type="submit" 
                 disabled={submitPulse.isPending} 

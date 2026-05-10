@@ -23,7 +23,10 @@ const FounderProfilePage = lazy(() => import("./pages/FounderProfilePage"));
 const FounderDocumentsPage = lazy(() => import("./pages/FounderDocumentsPage"));
 const FounderUpdatesPage = lazy(() => import("./pages/FounderUpdatesPage"));
 const FounderEventsPage = lazy(() => import("./pages/FounderEventsPage"));
+const CustomMetricsPage = lazy(() => import("./pages/CustomMetricsPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
+const GradingSystemPage = lazy(() => import("./pages/GradingSystemPage"));
+const UpdatesHistoryPage = lazy(() => import("./pages/UpdatesHistoryPage"));
 
 const LoadingScreen = () => (
   <div className="flex h-screen w-full items-center justify-center">
@@ -72,6 +75,7 @@ const RoleRouter = () => {
             <Route path="/startups/:id" element={<StartupDetailPage />} />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/grading" element={<GradingSystemPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -90,9 +94,10 @@ const RoleRouter = () => {
             <Route path="/targets" element={<FounderTargetsPage />} />
             <Route path="/financials" element={<FounderFinancialsPage />} />
             <Route path="/profile" element={<FounderProfilePage />} />
-            <Route path="/team" element={<FounderTeamPage />} />
             <Route path="/documents" element={<FounderDocumentsPage />} />
             <Route path="/updates" element={<FounderUpdatesPage />} />
+            <Route path="/history" element={<UpdatesHistoryPage />} />
+            <Route path="/custom-metrics" element={<CustomMetricsPage />} />
             <Route path="/events" element={<FounderEventsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -12,12 +12,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { 
-  Edit3, Share2, Globe, Rocket, Target, Users, Sparkles, 
-  TrendingUp, Briefcase, ChevronRight, CheckCircle2, 
+import {
+  Edit3, Share2, Globe, Rocket, Target, Users, Sparkles,
+  TrendingUp, Briefcase, ChevronRight, CheckCircle2,
   Plus, ArrowUpRight, Shield, Loader2, Phone, MapPin,
   Instagram, Linkedin, Twitter, ExternalLink, Building2, User,
-  Flag, Printer
+  Flag, Printer, Trash2, Mail, UserPlus, Users2
 } from "lucide-react";
 import {
   Dialog,
@@ -74,7 +74,41 @@ export default function FounderProfilePage() {
     enabled: !!user,
   });
 
+  const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
+    queryKey: ["founder-team", startup?.id],
+    queryFn: async () => {
+      if (!startup?.id) return [];
+      const { data } = await supabase.from("team_members").select("*").eq("startup_id", startup.id);
+      return data || [];
+    },
+    enabled: !!startup?.id,
+  });
+
   // 2. MUTATIONS
+  const addTeamMember = useMutation({
+    mutationFn: async (newMember: any) => {
+      if (!startup?.id) return;
+      const { error } = await supabase.from("team_members").insert({ ...newMember, startup_id: startup.id });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["founder-team"] });
+      toast({ title: "Member added", description: "Team list updated." });
+    },
+    onError: (error: any) => toast({ title: "Error", description: error.message, variant: "destructive" })
+  });
+
+  const deleteTeamMember = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await supabase.from("team_members").delete().eq("id", memberId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["founder-team"] });
+      toast({ title: "Member removed", description: "Team list updated." });
+    },
+  });
+
   const updateStartup = useMutation({
     mutationFn: async (updates: any) => {
       if (!startup?.id) return;
@@ -105,7 +139,7 @@ export default function FounderProfilePage() {
       if (!e.target.files || e.target.files.length === 0 || !startup?.id) return;
       const file = e.target.files[0];
       const fileName = `${startup.id}/${Math.random()}.png`;
-      
+
       const { error: uploadError } = await supabase.storage.from('logos').upload(fileName, file);
       if (uploadError) throw uploadError;
 
@@ -117,7 +151,7 @@ export default function FounderProfilePage() {
   };
 
   if (startupLoading || profileLoading) return <div className="flex h-screen items-center justify-center bg-[#F9F6F2]"><Loader2 className="animate-spin text-[#00D395]" /></div>;
-  const completionScore = 85; 
+  const completionScore = 85;
 
 
   return (
@@ -144,10 +178,10 @@ export default function FounderProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-        
+
         {/* LEFT COLUMN: Main Content */}
         <div className="xl:col-span-8 space-y-8">
-          
+
           {/* HERO IDENTITY CARD */}
           <Card className="bg-white border-gray-200 shadow-sm overflow-hidden relative group rounded-2xl">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#00D395] to-[#878A22]"></div>
@@ -171,7 +205,7 @@ export default function FounderProfilePage() {
                     </div>
                   </div>
                 </div>
-                
+
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#00D395] opacity-0 group-hover:opacity-100 transition-opacity">
@@ -303,6 +337,128 @@ export default function FounderProfilePage() {
             </CardContent>
           </Card>
 
+          {/* CORE LEADERSHIP SECTION */}
+          <Card className="bg-white border-gray-200 shadow-sm rounded-2xl group">
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <div>
+                <CardTitle className="text-sm font-bold text-gray-500 uppercase tracking-wider flex items-center">
+                  <Users2 className="w-4 h-4 mr-2 text-[#00D395]" /> Core Leadership
+                </CardTitle>
+                <CardDescription className="text-[10px] font-medium mt-1">Manage key team members visible to Lab admins.</CardDescription>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-2 border-gray-200 text-gray-600 hover:text-[#00D395] rounded-full">
+                    <UserPlus className="w-3.5 h-3.5" /> Add Member
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-white">
+                  <DialogHeader>
+                    <DialogTitle>Add Core Leader</DialogTitle>
+                    <DialogDescription>These details will be visible to the Lab Admin.</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Full Name</Label>
+                      <Input id="new-member-name" placeholder="e.g. Sarah Chen" className="h-11 border-gray-100" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Role / Title</Label>
+                      <Input id="new-member-role" placeholder="e.g. CTO & Co-Founder" className="h-11 border-gray-100" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input id="new-member-email" placeholder="sarah@startup.com" className="h-11 border-gray-100" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Phone</Label>
+                        <Input id="new-member-phone" placeholder="+234..." className="h-11 border-gray-100" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>LinkedIn URL</Label>
+                      <Input id="new-member-linkedin" placeholder="https://linkedin.com/in/..." className="h-11 border-gray-100" />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button 
+                      onClick={() => {
+                        const full_name = (document.getElementById('new-member-name') as HTMLInputElement).value;
+                        const role = (document.getElementById('new-member-role') as HTMLInputElement).value;
+                        const email = (document.getElementById('new-member-email') as HTMLInputElement).value;
+                        const phone_number = (document.getElementById('new-member-phone') as HTMLInputElement).value;
+                        const linkedin = (document.getElementById('new-member-linkedin') as HTMLInputElement).value;
+                        
+                        if (!full_name || !role) {
+                          toast({ title: "Name and Role are required", variant: "destructive" });
+                          return;
+                        }
+
+                        addTeamMember.mutate({ full_name, role, email, phone_number, linkedin });
+                      }} 
+                      className="bg-[#00D395] text-white rounded-full px-8"
+                      disabled={addTeamMember.isPending}
+                    >
+                      {addTeamMember.isPending ? "Adding..." : "Add Member"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {teamMembers.map((member: any) => (
+                  <Card key={member.id} className="border border-gray-100 shadow-none rounded-xl relative group/member bg-gray-50/30">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10 border border-white">
+                            <AvatarImage src={member.avatar_url || ''} />
+                            <AvatarFallback className="bg-white text-gray-400 text-xs font-bold">
+                              {member.full_name?.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-bold text-[#1A1A1A]">{member.full_name}</p>
+                            <p className="text-[10px] text-primary font-bold uppercase tracking-tight">{member.role}</p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-7 w-7 text-gray-300 hover:text-red-500 opacity-0 group-hover/member:opacity-100 transition-opacity"
+                          onClick={() => {
+                            if (confirm("Remove this team member?")) {
+                              deleteTeamMember.mutate(member.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5 pt-3 border-t border-white">
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                          <Mail className="w-3 h-3 text-gray-400" />
+                          <span className="truncate">{member.email || 'No email'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                          <Phone className="w-3 h-3 text-gray-400" />
+                          <span>{member.phone_number || 'No phone'}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {teamMembers.length === 0 && (
+                  <div className="col-span-full py-8 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">No team members added yet</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* STRATEGIC NARRATIVE (Stubbed for now, can be expanded) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="bg-white border-gray-200 shadow-sm rounded-2xl relative group">
@@ -321,10 +477,10 @@ export default function FounderProfilePage() {
                       <DialogTitle>Edit Strategic Focus</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
-                      <Textarea 
-                        defaultValue={startup?.problem_statement} 
-                        id="edit-problem" 
-                        className="min-h-[120px] border-gray-100" 
+                      <Textarea
+                        defaultValue={startup?.problem_statement}
+                        id="edit-problem"
+                        className="min-h-[120px] border-gray-100"
                         placeholder="What is the primary mission or problem your business focuses on?"
                       />
                     </div>
@@ -358,10 +514,10 @@ export default function FounderProfilePage() {
                       <DialogTitle>Edit Value Proposition</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
-                      <Textarea 
-                        defaultValue={startup?.solution_description} 
-                        id="edit-solution" 
-                        className="min-h-[120px] border-gray-100" 
+                      <Textarea
+                        defaultValue={startup?.solution_description}
+                        id="edit-solution"
+                        className="min-h-[120px] border-gray-100"
                         placeholder="What unique value do you provide to your customers?"
                       />
                     </div>
@@ -381,9 +537,8 @@ export default function FounderProfilePage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Sidebar */}
-        <div className="xl:col-span-4 space-y-6">
-          
+        {/* RIGHT COLUMN: Secondary Stats & Info */}
+        <div className="xl:col-span-4 space-y-8">
           {/* DIGITAL PRESENCE */}
           <Card className="bg-white border-gray-200 shadow-sm rounded-2xl group">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
@@ -468,39 +623,39 @@ export default function FounderProfilePage() {
                 <TrendingUp className="w-4 h-4 mr-2 text-[#878A22]" /> Market Presence
               </CardTitle>
               <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#00D395] opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Edit3 className="w-4 h-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-white">
-                    <DialogHeader>
-                      <DialogTitle>Edit Market Presence</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label>Target Market</Label>
-                        <Input defaultValue={startup?.target_market} id="edit-market" className="h-11 border-gray-100" placeholder="e.g. Lagos, Nigeria" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Vision Statement</Label>
-                        <Textarea 
-                          defaultValue={startup?.vision_statement} 
-                          id="edit-vision" 
-                          className="min-h-[100px] border-gray-100" 
-                          placeholder="Where do you see the business in 5 years?"
-                        />
-                      </div>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#00D395] opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-white">
+                  <DialogHeader>
+                    <DialogTitle>Edit Market Presence</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Target Market</Label>
+                      <Input defaultValue={startup?.target_market} id="edit-market" className="h-11 border-gray-100" placeholder="e.g. Lagos, Nigeria" />
                     </div>
-                    <DialogFooter>
-                      <Button onClick={() => {
-                        const target_market = (document.getElementById('edit-market') as HTMLInputElement).value;
-                        const vision_statement = (document.getElementById('edit-vision') as HTMLTextAreaElement).value;
-                        updateStartup.mutate({ target_market, vision_statement });
-                      }} className="bg-[#00D395] text-white rounded-full px-8">Save Changes</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                    <div className="space-y-2">
+                      <Label>Vision Statement</Label>
+                      <Textarea
+                        defaultValue={startup?.vision_statement}
+                        id="edit-vision"
+                        className="min-h-[100px] border-gray-100"
+                        placeholder="Where do you see the business in 5 years?"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={() => {
+                      const target_market = (document.getElementById('edit-market') as HTMLInputElement).value;
+                      const vision_statement = (document.getElementById('edit-vision') as HTMLTextAreaElement).value;
+                      updateStartup.mutate({ target_market, vision_statement });
+                    }} className="bg-[#00D395] text-white rounded-full px-8">Save Changes</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardHeader>
             <CardContent>
               <div className="space-y-4 mt-2">
@@ -517,9 +672,10 @@ export default function FounderProfilePage() {
               </div>
             </CardContent>
           </Card>
-
         </div>
+
       </div>
     </div>
+
   );
 }

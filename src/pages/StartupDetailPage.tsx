@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
-  ArrowLeft, Upload, FileText, Loader2, Send, Target, Zap, Rocket, 
+  ArrowLeft, Upload, FileText, Loader2, Target, Zap, Rocket, 
   LineChart, Users, Megaphone, CheckCircle2, Calendar, Download, 
   Crosshair, Flame, MessageSquare, ArrowUpRight, ArrowDownRight, 
   AlertCircle, Plus, LayoutDashboard, Filter, MoreVertical, 
@@ -33,6 +33,8 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tables } from "@/integrations/supabase/types";
 
+
+
 export default function StartupDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -55,22 +57,6 @@ export default function StartupDetailPage() {
     if (!startup) return '$';
     return startup.currency === 'NGN' ? '₦' : startup.currency === 'GBP' ? '£' : startup.currency === 'EUR' ? '€' : '$';
   }, [startup]);
-
-  // --- PROFESSIONAL MOCK DATA FALLBACKS ---
-  const mockRevenueData = useMemo(() => [
-    { month: 'Jan', mrr: 12000, expenses: 25000 },
-    { month: 'Feb', mrr: 15000, expenses: 26000 },
-    { month: 'Mar', mrr: 19500, expenses: 28000 },
-    { month: 'Apr', mrr: 24000, expenses: 29000 },
-    { month: 'May', mrr: 28000, expenses: 31000 },
-    { month: 'Jun', mrr: 35000, expenses: 32000 },
-  ], []);
-
-  const mockMilestones = useMemo(() => [
-    { id: '1', title: 'MVP Launch', status: 'completed', created_at: '2024-01-15' },
-    { id: '2', title: 'First 10 Paying Customers', status: 'completed', created_at: '2024-03-10' },
-    { id: '3', title: `Scale to ${currencySymbol}50k MRR`, status: 'in-progress', created_at: '2024-05-01' },
-  ], [currencySymbol]);
 
   const { data: pulses = [] } = useQuery({
     queryKey: ["startup-pulses", id],
@@ -95,7 +81,7 @@ export default function StartupDetailPage() {
   const { data: teamMembers = [] } = useQuery({
     queryKey: ["startup-team", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("*").eq("startup_id", id!);
+      const { data, error } = await supabase.from("team_members").select("*").eq("startup_id", id!);
       if (error) throw error;
       return data || [];
     },
@@ -106,6 +92,20 @@ export default function StartupDetailPage() {
     queryKey: ["attendance", id],
     queryFn: async () => {
       const { data, error } = await supabase.from("event_attendees").select("*, events(*)").eq("startup_id", id!);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!id,
+  });
+
+  const { data: founderUpdates = [] } = useQuery({
+    queryKey: ["founder-updates", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("startup_updates")
+        .select("id, title, content, created_at")
+        .eq("startup_id", id!)
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -125,18 +125,12 @@ export default function StartupDetailPage() {
   const { data: notes = [], refetch: refetchNotes } = useQuery({
     queryKey: ["notes", id],
     queryFn: async () => {
-      console.log("Fetching notes for startup:", id);
       const { data, error } = await supabase
         .from("notes")
         .select(`*`)
         .eq("startup_id", id!)
         .order("created_at", { ascending: false });
-      
-      if (error) {
-        console.error("Error fetching notes:", error);
-        throw error;
-      }
-      console.log("Notes received:", data);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!id,
@@ -156,49 +150,70 @@ export default function StartupDetailPage() {
     },
     onSuccess: () => {
       setNoteText("");
-      refetchNotes(); // Force a direct refetch
+      refetchNotes();
       toast({ title: "Note saved", description: "Your interaction log has been updated." });
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   });
+
+
+
+
+
+  // --- ANALYTICS ENGINE ---
+  const reportingRate = useMemo(() => {
+    // Logic: Last 4 weeks. A week is reported if pulses or milestones were updated.
+    const weeks = [0, 1, 2, 3];
+    const now = new Date();
+    const reportedWeeks = weeks.filter(weekOffset => {
+      const weekStart = new Date(now.getTime() - (weekOffset + 1) * 7 * 24 * 60 * 60 * 1000);
+      const weekEnd = new Date(now.getTime() - weekOffset * 7 * 24 * 60 * 60 * 1000);
+      
+      const hasPulse = pulses.some(p => {
+        const d = new Date(p.created_at || p.month);
+        return d >= weekStart && d < weekEnd;
+      });
+      
+      const hasMilestone = milestones.some(m => {
+        const d = new Date(m.updated_at || m.created_at || '');
+        return d >= weekStart && d < weekEnd;
+      });
+
+      return hasPulse || hasMilestone;
+    });
+
+    return Math.round((reportedWeeks.length / 4) * 100);
+  }, [pulses, milestones]);
+
   const insights = useMemo(() => {
     if (pulses.length < 1) return null;
-    
     const current = pulses[pulses.length - 1];
     const previous = pulses[pulses.length - 2] || null;
-    
-    // Burn Velocity (rolling 3-month avg)
     const recentPulses = pulses.slice(-3);
     const avgBurn = recentPulses.reduce((sum, p) => sum + (p.expenses || 0), 0) / recentPulses.length;
     const burnVelocity = previous ? ((current.expenses || 0) - (previous.expenses || 0)) / (previous.expenses || 1) : 0;
-    
-    // Profitability
     const revenue = current.mrr || 0;
     const expenses = current.expenses || 0;
     const netMargin = revenue > 0 ? (revenue - expenses) / revenue : -1;
-    
-    // Efficiency
     const newRev = previous ? Math.max(0, (current.mrr || 0) - (previous.mrr || 0)) : 0;
     const efficiency = newRev > 0 ? (expenses - revenue) / newRev : 0;
-    
-    // Runway
     const cash = current.cash_in_bank || 0;
     const netBurn = expenses - revenue;
-    const runway = netBurn > 0 ? cash / netBurn : -1; // -1 represents Infinity
-
+    const grossBurn = current.expenses || 0;
+    const runway = grossBurn > 0 ? cash / grossBurn : 0;
     return { burnVelocity, netMargin, efficiency, runway, current, previous, netBurn };
   }, [pulses]);
 
-  // --- MOCK DATA CHECK ---
-  const isMockMode = pulses.length === 0;
-  const chartData = isMockMode ? mockRevenueData : pulses.map(p => ({
+  const chartData = useMemo(() => pulses.map(p => ({
     month: new Date(p.month).toLocaleDateString('en-US', { month: 'short' }),
     mrr: p.mrr || 0,
     expenses: p.expenses || 0,
     target: p.target_mrr || 0
-  }));
+  })), [pulses]);
+
+  const isMockMode = false;
 
   if (loadingStartup) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!startup) return <div className="p-8 text-center text-red-500">Startup not found.</div>;
@@ -242,9 +257,6 @@ export default function StartupDetailPage() {
                 <MessageSquare className="w-4 h-4" /> Send Nudge
               </Button>
             </div>
-            <div className="w-full md:w-64">
-              <GrowthStageBar currentStage={startup.current_stage as GrowthStage} />
-            </div>
           </div>
         </div>
       </div>
@@ -256,13 +268,11 @@ export default function StartupDetailPage() {
             <TabsList className="bg-transparent h-auto p-0 gap-8 justify-start w-max rounded-none">
               {[
                 { value: 'overview', label: 'Overview', icon: LayoutDashboard },
-                { value: 'profile', label: 'Company Profile', icon: Building2 },
                 { value: 'financials', label: 'Financials', icon: LineChart },
                 { value: 'targets', label: 'Targets', icon: Target },
                 { value: 'events', label: 'Events', icon: Calendar },
-                { value: 'team', label: 'Team', icon: Users2 },
                 { value: 'updates', label: 'Updates', icon: Zap },
-                { value: 'notes', label: 'Admin Notes', icon: MessageSquare },
+                { value: 'notes', label: 'Admin Notes', icon: AlertCircle },
                 { value: 'vault', label: 'Vault', icon: ShieldCheck },
               ].map(tab => (
                 <TabsTrigger 
@@ -279,195 +289,217 @@ export default function StartupDetailPage() {
           {/* TAB CONTENTS */}
           
           {/* 1. OVERVIEW */}
-          <TabsContent value="overview" className="space-y-6 mt-0">
+          <TabsContent value="overview" className="space-y-8 mt-0">
+            {/* KPI GRID */}
             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
-                    Health Score
-                    <Shield className="w-3 h-3 text-emerald-500" />
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+                    Monthly Revenue
+                    <DollarSign className="w-3 h-3 text-[#635BFF]" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-gray-900">84%</div>
-                  <div className="mt-2 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500" style={{ width: '84%' }} />
+                  <div className="text-2xl font-bold text-gray-900">
+                    {currencySymbol}{(insights?.current?.mrr || 0).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] font-bold text-emerald-500 flex items-center mt-1">
+                    Current MRR
                   </div>
                 </CardContent>
               </Card>
+              
               <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
                     Monthly Burn
                     <Flame className="w-3 h-3 text-red-500" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-gray-900">
+                  <div className="text-2xl font-bold text-gray-900">
                     {currencySymbol}{(insights?.current?.expenses || 0).toLocaleString()}
                   </div>
-                  <div className="text-[10px] font-bold text-red-500 flex items-center mt-1">
-                    <ArrowUpRight className="w-3 h-3 mr-0.5" /> +12% MoM
+                  <div className="text-[10px] font-bold text-gray-400 flex items-center mt-1">
+                    {pulses.length > 0 ? <><ArrowUpRight className="w-3 h-3 mr-0.5 text-red-500" /> <span className="text-red-500">+12% MoM</span></> : 'No recent change'}
                   </div>
                 </CardContent>
               </Card>
+
               <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
                     Runway
                     <Clock className="w-3 h-3 text-amber-500" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-gray-900">
-                    {insights?.runway === -1 ? '∞' : `${insights?.runway?.toFixed(1) || '0.0'}mo`}
+                  <div className="text-2xl font-bold text-gray-900">
+                    {`${insights?.runway?.toFixed(1) || '0.0'}mo`}
                   </div>
                   <div className="text-[10px] font-bold text-gray-400 flex items-center mt-1">
-                    {insights?.runway === -1 ? 'Profitable / Default Alive' : 'Based on current burn'}
+                    {insights?.runway === 0 ? 'No active burn' : 'Based on current burn'}
                   </div>
                 </CardContent>
               </Card>
+
               <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
-                    Reporting
-                    <CheckCircle2 className="w-3 h-3 text-primary" />
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+                    Reporting Rate
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-gray-900">100%</div>
-                  <div className="text-[10px] font-bold text-emerald-500 flex items-center mt-1">
-                    On track
+                  <div className="text-2xl font-bold text-gray-900">{reportingRate}%</div>
+                  <div className="mt-2 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${reportingRate}%` }} />
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-              <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold">Growth Trajectory</CardTitle>
-                  <CardDescription>Revenue vs Target MRR progression</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  {isMockMode && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center backdrop-blur-[1px]"><Badge className="bg-amber-100 text-amber-700">Preview Mode</Badge></div>}
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
-                      <RechartsTooltip 
-                        cursor={{ fill: 'rgba(99, 91, 255, 0.05)' }} 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
-                      />
-                      <Bar dataKey="mrr" fill="#635BFF" radius={[4, 4, 0, 0]} barSize={32} />
-                      <Bar dataKey="target" fill="#CBD5E1" radius={[4, 4, 0, 0]} barSize={32} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              
-              <Card className="border-none shadow-sm bg-white rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold">Critical Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {insights?.runway && insights.runway < 6 && (
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-100">
-                      <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-bold text-red-900">Low Runway Warning</p>
-                        <p className="text-xs text-red-700">Founder needs support for upcoming Series A bridge.</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
-                    <Target className="w-5 h-5 text-amber-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-amber-900">Targets Due</p>
-                      <p className="text-xs text-amber-700">"MVP Launch" is nearing the 30-day deadline.</p>
-                    </div>
-                  </div>
-                  <Button variant="outline" className="w-full border-gray-200 text-xs font-bold rounded-xl mt-4">
-                    View Intervention Strategy <ArrowRight className="w-3 h-3 ml-2" />
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* 2. PROFILE */}
-          <TabsContent value="profile" className="mt-0">
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-              <div className="lg:col-span-2 space-y-6">
-                <Card className="border-none shadow-sm bg-white rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-lg font-bold">The Vision</CardTitle>
+            <div className="grid gap-8 grid-cols-1 lg:grid-cols-3">
+              {/* LEFT COLUMN: Vision & Key Contacts */}
+              <div className="lg:col-span-2 space-y-8">
+                {/* Vision Section */}
+                <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-lg font-bold flex items-center gap-2">
+                      <Rocket className="w-5 h-5 text-primary" /> The Vision
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Description</p>
-                      <p className="text-gray-700 leading-relaxed">{startup.description || 'No description provided.'}</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Elevator Pitch</p>
+                      <p className="text-xl font-medium text-gray-900 leading-tight">
+                        {startup.mission_statement || 'A bold vision for the future of this industry.'}
+                      </p>
                     </div>
+                    <Separator className="bg-gray-50" />
                     <div>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Elevator Pitch</p>
-                      <p className="text-lg font-medium text-gray-900">
-                        {startup.mission_statement || 'Scale and growth for the emerging markets.'}
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Core Description</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">
+                        {startup.description || 'No detailed description provided yet.'}
                       </p>
                     </div>
                   </CardContent>
                 </Card>
-                
-                <Card className="border-none shadow-sm bg-white rounded-2xl">
-                  <CardHeader>
-                    <CardTitle className="text-lg font-bold">Social Presence</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                      { icon: Globe, label: 'Website', value: startup.website },
-                      { icon: Linkedin, label: 'LinkedIn', value: (startup.social_links as any)?.linkedin },
-                      { icon: Twitter, label: 'Twitter', value: (startup.social_links as any)?.twitter },
-                      { icon: Instagram, label: 'Instagram', value: (startup.social_links as any)?.instagram },
-                    ].map(link => (
-                      <div key={link.label} className="p-4 rounded-xl border border-gray-50 bg-gray-50/50 flex flex-col items-center text-center gap-2">
-                        <link.icon className="w-5 h-5 text-primary" />
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">{link.label}</p>
-                        <p className="text-xs font-medium text-gray-900 truncate w-full">
-                          {link.value ? <a href={link.value} target="_blank" className="hover:underline">{link.value.replace('https://', '')}</a> : 'Not set'}
-                        </p>
-                      </div>
+
+                {/* Key Contacts */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-lg font-bold">Key Contacts</h3>
+                    <Badge variant="outline" className="rounded-full bg-gray-50 text-gray-500 border-none font-bold text-[10px]">
+                      {teamMembers.length} Members
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {teamMembers.map((member: any) => (
+                      <Card key={member.id} className="border border-gray-100 shadow-sm rounded-2xl hover:border-primary/20 transition-all bg-white group">
+                        <CardContent className="p-5">
+                          <div className="flex items-center gap-4">
+                            <Avatar className="h-14 w-14 rounded-xl border-2 border-gray-50 group-hover:border-primary/10 transition-all">
+                              <AvatarImage src={member.avatar_url || ''} />
+                              <AvatarFallback className="bg-primary/5 text-primary font-bold">{member.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-bold text-gray-900 truncate">{member.full_name}</h4>
+                              <p className="text-[11px] text-primary font-bold uppercase tracking-tight">{member.role}</p>
+                            </div>
+                          </div>
+                          <div className="mt-5 pt-5 border-t border-gray-50 space-y-2">
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              <Mail className="w-3.5 h-3.5 text-gray-400" />
+                              <span className="truncate">{member.email || 'No email set'}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              <Phone className="w-3.5 h-3.5 text-gray-400" />
+                              <span>{member.phone_number || 'No phone set'}</span>
+                            </div>
+                            {member.linkedin && (
+                              <a href={member.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-xs text-[#0A66C2] font-medium hover:underline">
+                                <LinkedinIcon className="w-3.5 h-3.5" />
+                                <span>LinkedIn Profile</span>
+                              </a>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
                     ))}
+                    {teamMembers.length === 0 && (
+                      <div className="col-span-full py-12 text-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-100">
+                        <Users2 className="h-8 w-8 mx-auto mb-3 text-gray-200" />
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No team members listed</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: Trajectory & Milestones */}
+              <div className="space-y-8">
+                <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-bold">Revenue vs Target Projection</CardTitle>
+                    <CardDescription>MRR Growth vs Planned Roadmap</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[240px] px-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 10, fontWeight: 'bold'}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 10, fontWeight: 'bold'}} tickFormatter={(val) => `${currencySymbol}${val / 1000}k`} />
+                        <RechartsTooltip 
+                          cursor={{ fill: 'rgba(99, 91, 255, 0.05)' }} 
+                          contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} 
+                        />
+                        <Bar 
+                          dataKey="mrr" 
+                          name="Actual MRR"
+                          fill="#00D395" 
+                          radius={[6, 6, 0, 0]} 
+                          barSize={20} 
+                        />
+                        <Bar 
+                          dataKey="target" 
+                          name="Target Projection"
+                          fill="#635BFF" 
+                          radius={[6, 6, 0, 0]} 
+                          barSize={20} 
+                          opacity={0.3}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </CardContent>
                 </Card>
-              </div>
-              
-              <div className="space-y-6">
-                <Card className="border-none shadow-sm bg-white rounded-2xl">
+
+                <Card className="border-none shadow-sm bg-white rounded-3xl">
                   <CardHeader>
-                    <CardTitle className="text-lg font-bold">Details</CardTitle>
+                    <CardTitle className="text-lg font-bold">Execution Board</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                      <span className="text-sm text-gray-500">Sector</span>
-                      <Badge variant="outline" className="bg-primary/5 text-primary border-none">{startup.sector || 'SaaS'}</Badge>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                      <span className="text-sm text-gray-500">Stage</span>
-                      <span className="text-sm font-bold">{startup.current_stage || 'Seed'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-50">
-                      <span className="text-sm text-gray-500">Currency</span>
-                      <span className="text-sm font-bold uppercase">{startup.currency || 'USD'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm text-gray-500">Join Date</span>
-                      <span className="text-sm font-bold">{new Date(startup.created_at).toLocaleDateString()}</span>
-                    </div>
+                    {milestones.slice(0, 4).map(m => (
+                      <div key={m.id} className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white hover:border-primary/20 transition-all group">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${m.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                            {m.status === 'completed' ? <CheckCircle2 className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                          </div>
+                          <p className="text-xs font-bold text-gray-900 truncate max-w-[120px]">{m.title}</p>
+                        </div>
+                        <Badge variant="outline" className={`text-[9px] font-bold uppercase border-none ${m.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                          {m.status}
+                        </Badge>
+                      </div>
+                    ))}
+                    {milestones.length === 0 && <p className="text-center py-8 text-[10px] font-bold text-gray-300 uppercase tracking-widest">No milestones logged</p>}
                   </CardContent>
                 </Card>
               </div>
             </div>
           </TabsContent>
+
 
           {/* 3. FINANCIALS */}
           <TabsContent value="financials" className="mt-0 space-y-6">
@@ -511,7 +543,6 @@ export default function StartupDetailPage() {
                   <CardTitle className="text-lg font-bold">Revenue vs Expenses</CardTitle>
                 </CardHeader>
                 <CardContent className="h-[350px]">
-                  {isMockMode && <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center backdrop-blur-[1px]"><Badge className="bg-amber-100 text-amber-700">Preview Mode</Badge></div>}
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
@@ -571,7 +602,7 @@ export default function StartupDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {(milestones.length > 0 ? milestones : mockMilestones).map(m => (
+                      {milestones.map(m => (
                         <div key={m.id} className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white hover:border-primary/20 transition-all group">
                           <div className="flex items-center gap-4">
                             <div className={`p-3 rounded-xl ${m.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -629,8 +660,10 @@ export default function StartupDetailPage() {
                           <Calendar className="w-6 h-6 text-primary" />
                         </div>
                         <div className="min-w-0">
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                           <p className="text-sm font-bold truncate">{(att.events as any)?.title || 'Community Event'}</p>
                           <p className="text-[10px] text-gray-400">
+                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                             {new Date((att.events as any)?.event_date).toLocaleDateString()}
                           </p>
                         </div>
@@ -647,74 +680,64 @@ export default function StartupDetailPage() {
             </Card>
           </TabsContent>
 
-          {/* 6. TEAM */}
-          <TabsContent value="team" className="mt-0">
-             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-               {teamMembers.map(member => (
-                 <Card key={member.id} className="border-none shadow-sm bg-white rounded-2xl overflow-hidden group hover:shadow-md transition-all">
-                   <div className="h-20 bg-gradient-to-r from-primary/5 to-primary/10" />
-                   <div className="px-6 pb-6 -mt-10 text-center">
-                     <Avatar className="h-20 w-20 mx-auto border-4 border-white shadow-sm mb-3">
-                       <AvatarImage src={member.avatar_url || ''} />
-                       <AvatarFallback className="bg-gray-100 text-gray-400 text-xl font-bold">
-                         {member.full_name?.substring(0, 2).toUpperCase() || '??'}
-                       </AvatarFallback>
-                     </Avatar>
-                     <h4 className="text-md font-bold text-gray-900 group-hover:text-primary transition-colors">{member.full_name}</h4>
-                     <p className="text-xs text-gray-500 font-medium">{member.role || 'Team Member'}</p>
-                     <Separator className="my-4 opacity-50" />
-                     <div className="flex justify-center gap-2">
-                       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-blue-50 hover:text-blue-600">
-                         <LinkedinIcon className="w-4 h-4" />
-                       </Button>
-                       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-gray-100">
-                         <Mail className="w-4 h-4" />
-                       </Button>
-                     </div>
-                   </div>
-                 </Card>
-               ))}
-               <Card className="border-2 border-dashed border-gray-100 bg-transparent rounded-2xl flex flex-col items-center justify-center p-6 text-center text-gray-400 hover:border-primary/20 hover:text-primary transition-all cursor-pointer min-h-[250px]">
-                 <UserPlus className="w-8 h-8 mb-2 opacity-30" />
-                 <p className="text-sm font-bold">Add Team Member</p>
-               </Card>
-             </div>
-          </TabsContent>
 
           {/* 7. UPDATES */}
           <TabsContent value="updates" className="mt-0">
-            <Card className="border-none shadow-sm bg-white rounded-2xl max-w-3xl mx-auto">
-              <CardHeader>
-                <CardTitle className="text-lg font-bold">Achievement Timeline</CardTitle>
-                <CardDescription>Major wins and monthly highlights</CardDescription>
-              </CardHeader>
-              <CardContent className="relative">
-                <div className="absolute left-9 top-8 bottom-8 w-0.5 bg-gray-50" />
-                <div className="space-y-8">
-                  {[...pulses].reverse().filter(p => p.win).map(p => (
-                    <div key={p.id} className="relative pl-12">
-                      <div className="absolute left-0 top-0 w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center z-10">
-                        <Sparkles className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div className="p-4 rounded-2xl border border-gray-50 bg-white hover:border-emerald-100 transition-all">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-                          {new Date(p.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                        </p>
-                        <p className="text-sm font-bold text-gray-900 mb-2">Monthly Win</p>
-                        <p className="text-sm text-gray-600 leading-relaxed italic">"{p.win}"</p>
-                      </div>
-                    </div>
-                  ))}
-                  {pulses.filter(p => p.win).length === 0 && (
-                    <div className="py-20 text-center text-gray-400">
-                      <Zap className="w-12 h-12 mx-auto mb-3 opacity-10" />
-                      <p className="text-sm italic">No wins recorded yet. Time to go big!</p>
-                    </div>
-                  )}
+            <div className="max-w-2xl mx-auto space-y-4">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Founder Updates</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Real-time wins, blockers and asks from the founder.</p>
                 </div>
-              </CardContent>
-            </Card>
+                <Badge variant="outline" className="font-bold text-xs">
+                  {founderUpdates.length} update{founderUpdates.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+
+              {founderUpdates.length === 0 && (
+                <div className="py-20 text-center">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+                  <p className="text-sm text-gray-400 italic">No updates posted yet.</p>
+                </div>
+              )}
+
+              {founderUpdates.map((update) => {
+                const typeConfig: Record<string, { border: string; badge: string; label: string }> = {
+                  win:     { border: "border-l-[#00D395]", badge: "bg-[#00D395]/10 text-[#00D395]", label: "🏆 Win" },
+                  blocker: { border: "border-l-[#FF4D4F]", badge: "bg-[#FF4D4F]/10 text-[#FF4D4F]", label: "🚧 Blocker" },
+                  ask:     { border: "border-l-[#F5A623]", badge: "bg-[#F5A623]/10 text-[#F5A623]", label: "🙋 Ask" },
+                };
+                const detectedType = update.title?.toLowerCase() || "win";
+                const cfg = typeConfig[detectedType] || typeConfig.win;
+                const timeAgo = (d: string) => {
+                  const diff = Date.now() - new Date(d).getTime();
+                  const mins = Math.floor(diff / 60000);
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  return `${Math.floor(hrs / 24)}d ago`;
+                };
+                return (
+                  <div
+                    key={update.id}
+                    className={`bg-white rounded-2xl border border-gray-100 border-l-4 ${cfg.border} shadow-sm p-5`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-widest ${cfg.badge}`}>
+                        {cfg.label}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-medium">
+                        {update.created_at ? timeAgo(update.created_at) : "—"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-700 font-medium leading-relaxed">{update.content}</p>
+                  </div>
+                );
+              })}
+            </div>
           </TabsContent>
+
+
 
           {/* 8. NOTES */}
           <TabsContent value="notes" className="mt-0">
@@ -815,7 +838,8 @@ export default function StartupDetailPage() {
                           <div className="min-w-0">
                             <p className="text-sm font-bold truncate">{doc.file_name}</p>
                             <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
-                              {(doc as any).file_type || 'PDF'} · {Math.round((doc as any).size / 1024) || 256} KB
+                              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                              {(doc as any).file_type || 'PDF'} · {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}{Math.round((doc as any).size / 1024) || 256} KB
                             </p>
                           </div>
                         </div>

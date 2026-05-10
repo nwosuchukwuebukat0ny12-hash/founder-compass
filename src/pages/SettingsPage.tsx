@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, User, Mail, ShieldAlert, Users, Settings as SettingsIcon } from "lucide-react";
@@ -6,9 +6,28 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "@/hooks/use-toast";
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ["admin-profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+
+
 
   const { data: teamProfiles, isLoading } = useQuery({
     queryKey: ["team-profiles"],
@@ -47,26 +66,27 @@ export default function SettingsPage() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16 border-4 border-background shadow-sm">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xl">
-                    {user?.email?.charAt(0).toUpperCase() || "L"}
+                    {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || "L"}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <CardTitle className="text-xl">Lab Administrator</CardTitle>
+                  <CardTitle className="text-xl">{profile?.full_name || "Lab Administrator"}</CardTitle>
                   <CardDescription className="mt-1">Active Session</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">
               <div className="grid gap-6 sm:grid-cols-2">
+
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</label>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</Label>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border">
                     <Mail className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">{user?.email}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Role</label>
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Role</Label>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
                     <ShieldAlert className="h-4 w-4 text-primary" />
                     <span className="text-sm font-medium text-primary">Lab Staff (Admin)</span>
@@ -105,11 +125,11 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-4">
                         <Avatar className="h-10 w-10 border border-primary/10">
                           <AvatarFallback className="bg-primary/5 text-primary text-sm font-semibold">
-                            {profile.email?.charAt(0).toUpperCase() || "?"}
+                            {profile.full_name ? profile.full_name.charAt(0).toUpperCase() : profile.email?.charAt(0).toUpperCase() || "?"}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="text-sm font-medium">{profile.email}</p>
+                          <p className="text-sm font-medium">{profile.full_name || profile.email}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">Joined {new Date(profile.created_at).toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                         </div>
                       </div>

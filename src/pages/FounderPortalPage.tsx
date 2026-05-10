@@ -1,54 +1,29 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  TrendingUp, TrendingDown, AlertCircle, CheckCircle2, 
+import { useState, useMemo } from "react";
+import {
+  TrendingUp, TrendingDown, AlertCircle, CheckCircle2,
   ArrowUpRight, ArrowDownRight, Loader2, Plus, Clock, Rocket,
-  Building2
+  Building2, RefreshCw
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, PieChart, Pie, Cell, LineChart, Line
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
 import { WelcomeBanner } from "@/components/WelcomeBanner";
 import { useNavigate } from "react-router-dom";
 
-// --- MOCK DATA FOR "WOW" FACTOR ---
-const revenueData = [
-  { month: 'Jan', mrr: 42000, arr_target: 500000 },
-  { month: 'Feb', mrr: 45000, arr_target: 550000 },
-  { month: 'Mar', mrr: 48500, arr_target: 600000 },
-  { month: 'Apr', mrr: 51000, arr_target: 650000 },
-  { month: 'May', mrr: 58000, arr_target: 700000 },
-  { month: 'Jun', mrr: 64000, arr_target: 750000 },
-  { month: 'Jul', mrr: 72000, arr_target: 800000 },
-  { month: 'Aug', mrr: 105000, arr_target: 900000 },
-  { month: 'Sep', mrr: 112000, arr_target: 1000000 },
-  { month: 'Oct', mrr: 108000, arr_target: 1100000 },
-  { month: 'Nov', mrr: 118000, arr_target: 1200000 },
-  { month: 'Dec', mrr: 127400, arr_target: 1500000 },
-];
+type BurnTimeframe = "daily" | "weekly" | "monthly";
 
-const userGrowthData = [
-  { month: 'Jul', new: 400, churned: 50 },
-  { month: 'Aug', new: 850, churned: 120 },
-  { month: 'Sep', new: 600, churned: 180 },
-  { month: 'Oct', new: 300, churned: 450 },
-  { month: 'Nov', new: 750, churned: 200 },
-  { month: 'Dec', new: 940, churned: 110 },
-];
-
-const burnBreakdown = [
-  { name: 'Salaries', value: 55000, color: '#00D395' }, // Teal
-  { name: 'Infrastructure', value: 12000, color: '#878A22' }, // Olive
-  { name: 'Marketing', value: 18000, color: '#F5A623' }, // Amber
-  { name: 'Operations', value: 6000, color: '#FF4D4F' }, // Red
-];
+function isWithinMs(dateStr: string, ms: number): boolean {
+  return Date.now() - new Date(dateStr).getTime() <= ms;
+}
 
 // Recharts Sparkline component
 const SparkLine = ({ data, dataKey, color }: { data: any[], dataKey: string, color: string }) => (
@@ -62,7 +37,13 @@ const SparkLine = ({ data, dataKey, color }: { data: any[], dataKey: string, col
 export default function FounderPortalPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  
+  const [burnTimeframe, setBurnTimeframe] = useState<BurnTimeframe>("monthly");
+
+  const cycleTimeframe = () => {
+    setBurnTimeframe((prev) => prev === "monthly" ? "daily" : prev === "daily" ? "weekly" : "monthly");
+  };
+
+
   const { data: startup, isLoading: startupLoading } = useQuery({
     queryKey: ["founder-startup", user?.id],
     queryFn: async () => {
@@ -114,70 +95,70 @@ export default function FounderPortalPage() {
     enabled: !!user?.id,
   });
 
-  const metricConfig = (startup?.metric_config as string[]) || [];
-  const labelMrr = metricConfig[0] || "Monthly Recurring Rev";
-  const labelBurn = metricConfig[1] || "Net Burn Rate";
-  const labelUsers = metricConfig[2] || "Active Users (WAU)";
-  const labelChurn = metricConfig[3] || "Logo Churn Rate";
+  // Live transactions from startup_financials for interactive Burn card
+  const { data: financialTxs = [] } = useQuery({
+    queryKey: ["dashboard-financials", startup?.id],
+    queryFn: async () => {
+      if (!startup?.id) return [];
+      const { data, error } = await supabase
+        .from("startup_financials")
+        .select("expenses, revenue, month")
+        .eq("startup_id", startup.id)
+        .order("month", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!startup?.id,
+  });
+
   const currencySymbol = startup?.currency === 'NGN' ? '₦' : startup?.currency === 'GBP' ? '£' : startup?.currency === 'EUR' ? '€' : '$';
 
   const isDemoMode = pulses.length === 0;
 
-  const chartData = !isDemoMode ? pulses.map(p => ({
-    month: p.month.split('-')[1],
-    mrr: p.mrr,
-    new: p.new_users,
-    churned: p.lost_users
-  })) : revenueData; // Fallback to mock for demo
-
-  // KPI Derivations
+  // KPI Derivations from real pulse data
   const latestPulse = !isDemoMode ? pulses[pulses.length - 1] : null;
-  const previousPulse = !isDemoMode ? pulses[pulses.length - 2] : null;
+  const previousPulse = !isDemoMode && pulses.length >= 2 ? pulses[pulses.length - 2] : null;
 
-  const currentMrr = !isDemoMode ? (latestPulse?.mrr || 0) : 127400;
-  const prevMrr = !isDemoMode ? (previousPulse?.mrr || 0) : 118000;
-  const mrrGrowth = prevMrr > 0 ? ((currentMrr - prevMrr) / prevMrr) * 100 : 8.2;
+  const currentMrr = latestPulse?.mrr || 0;
+  const prevMrr = previousPulse?.mrr || 0;
+  const mrrGrowth = prevMrr > 0 ? ((currentMrr - prevMrr) / prevMrr) * 100 : 0;
 
-  const currentCash = !isDemoMode ? (latestPulse?.cash_in_bank || 0) : 1270000;
-  const currentBurn = !isDemoMode ? (latestPulse?.expenses || 0) : 91000;
-  const runwayValue = currentBurn > 0 ? (currentCash / currentBurn) : (startup?.runway_months || 14);
+  const targetMrr = latestPulse?.target_mrr || 0;
+
+  const currentCash = latestPulse?.cash_in_bank || 0;
+  const currentBurn = latestPulse?.expenses || 0;
+  const runwayValue = currentBurn > 0 ? (currentCash / currentBurn) : 0;
   const runwayMonthsStr = runwayValue.toFixed(1);
 
-  const currentUsers = !isDemoMode ? (latestPulse?.active_users || startup?.active_users || 0) : 3840;
-  const prevUsers = !isDemoMode ? (previousPulse?.active_users || 0) : 3400;
-  const userGrowth = prevUsers > 0 ? ((currentUsers - prevUsers) / prevUsers) * 100 : 12.0;
+  const totalActiveCustomers = latestPulse?.active_users || 0;
+  const prevCustomers = previousPulse?.active_users || 0;
+  const customerGrowth = prevCustomers > 0 ? ((totalActiveCustomers - prevCustomers) / prevCustomers) * 100 : 0;
 
-  const healthScore = !isDemoMode ? Math.round(
-    ((runwayValue >= 12 ? 100 : 50) * 0.4) + 
-    ((userGrowth >= 10 ? 100 : 50) * 0.4) + 
-    ((latestPulse?.team_size && latestPulse.team_size > 1 ? 100 : 50) * 0.2)
-  ) : 88;
+  const spendLabels = ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"];
 
-  const churnRate = !isDemoMode && latestPulse?.lost_users && latestPulse?.active_users 
-    ? ((latestPulse.lost_users / latestPulse.active_users) * 100).toFixed(1)
-    : "2.3";
-
-  const spendLabels = metricConfig.length > 4 ? metricConfig.slice(metricConfig.length - 4) : ["Salaries & Talent", "Software & Infra", "Growth & Marketing", "Ops & Admin"];
-
-  const burnBreakdownData = !isDemoMode ? [
+  const burnBreakdownData = [
     { name: spendLabels[0], value: latestPulse?.spend_salaries || 0, color: '#00D395' },
     { name: spendLabels[1], value: latestPulse?.spend_infra || 0, color: '#878A22' },
     { name: spendLabels[2], value: latestPulse?.spend_marketing || 0, color: '#F5A623' },
     { name: spendLabels[3], value: latestPulse?.spend_ops || 0, color: '#FF4D4F' },
-  ] : burnBreakdown;
+  ];
 
-  const hasBurnData = isDemoMode || burnBreakdownData.some(b => b.value > 0);
+  const hasBurnData = burnBreakdownData.some(b => b.value > 0);
 
-  const getHealthColor = (score: number) => score > 70 ? 'text-[#00D395]' : score > 40 ? 'text-[#F5A623]' : 'text-[#FF4D4F]';
-  const getHealthStroke = (score: number) => score > 70 ? '#00D395' : score > 40 ? '#F5A623' : '#FF4D4F';
+  // MRR vs Target chart data from pulse history
+  const mrrChartData = pulses.map(p => {
+    const monthLabel = new Date(p.month + '-01').toLocaleString('default', { month: 'short' });
+    return {
+      month: monthLabel,
+      mrr: p.mrr || 0,
+      target: p.target_mrr || 0,
+    };
+  });
 
-  // Dynamic Alerts Logic
-  const alerts = [];
-  if (runwayValue < 6) {
+  // Dynamic Alerts Logic (simplified — no churn)
+  const alerts: Array<{ type: string; color: string; title: string; message: string }> = [];
+  if (runwayValue > 0 && runwayValue < 6) {
     alerts.push({ type: 'danger', color: '#FF4D4F', title: 'Runway Warning', message: `Your runway is critically low (${runwayMonthsStr} months). Contact your Lab Lead.` });
-  }
-  if (!isDemoMode && Number(churnRate) > 5) {
-    alerts.push({ type: 'warning', color: '#F5A623', title: 'High Churn', message: `Your churn rate has spiked to ${churnRate}%. Prioritize customer success.` });
   }
   if (priorities.length === 0) {
     alerts.push({ type: 'warning', color: '#878A22', title: 'No Priorities', message: `You have no pinned tasks. Go to Command Center to set your focus.` });
@@ -186,7 +167,11 @@ export default function FounderPortalPage() {
     alerts.push({ type: 'success', color: '#00D395', title: 'All Clear', message: `No critical alerts at this time. Keep up the momentum!` });
   }
 
-  const founderDisplay = profile?.full_name || user?.email?.split('@')[0] || "Founder";
+  // Founder display: Last Name First Name
+  const profileData = profile as any;
+  const founderDisplay = profileData?.last_name && profileData?.first_name
+    ? `${profileData.last_name} ${profileData.first_name}`
+    : profileData?.full_name || user?.email?.split('@')[0] || "Founder";
 
   if (startupLoading || pulsesLoading) {
     return (
@@ -208,8 +193,8 @@ export default function FounderPortalPage() {
 
   return (
     <div className="font-sans pb-24 text-[#1A1A1A]">
-      
-      {/* HEADER ACTION BAR */}
+
+      {/* HEADER ACTION BAR — founder name removed from here to avoid duplication */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-2xl shadow-sm overflow-hidden">
@@ -224,189 +209,208 @@ export default function FounderPortalPage() {
             <p className="text-xs text-gray-500 font-bold uppercase tracking-[0.2em] mt-0.5">Mission Control</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold text-[#1A1A1A] leading-none">{founderDisplay}</p>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter mt-1">Founder & CEO</p>
-          </div>
-          <Avatar className="h-10 w-10 border-2 border-white ring-2 ring-[#00D395]/20 shadow-sm">
-            <AvatarFallback className="bg-gradient-to-br from-[#00D395] to-[#878A22] text-white text-xs font-bold">
-              {founderDisplay.charAt(0)}
-            </AvatarFallback>
-          </Avatar>
-        </div>
       </div>
-      
-      {/* 1. WELCOME BANNER (Task 1) */}
-      <WelcomeBanner 
-        founderName={founderDisplay} 
-        startupName={startup.name} 
-        pulseStatus="due" 
+
+      {/* 1. WELCOME BANNER */}
+      <WelcomeBanner
+        founderName={founderDisplay}
+        startupName={startup.name}
+        pulseStatus="due"
         onActionClick={() => navigate('/updates')}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 px-4 sm:px-6">
-        
+
         {/* LEFT COLUMN: KPI Strip + Main Charts (Takes 9 columns) */}
         <div className="xl:col-span-9 space-y-6">
-          
-          {/* ZONE 1: KPI STRIP */}
+
+          {/* ZONE 1: 6 CORE KPI CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* KPI 1: MRR */}
             <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
               <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">{labelMrr}</p>
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Monthly Recurring Rev</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {currencySymbol}{(currentMrr / 1000).toFixed(1)}k
+                    {currentMrr > 0 ? `${currencySymbol}${(currentMrr / 1000).toFixed(1)}k` : '—'}
                   </h3>
-                  <div className={`flex items-center text-sm font-bold bg-${mrrGrowth >= 0 ? '[#00D395]' : '[#FF4D4F]'}/10 px-2 py-0.5 rounded text-${mrrGrowth >= 0 ? '[#00D395]' : '[#FF4D4F]'}`}>
-                    {mrrGrowth >= 0 ? <ArrowUpRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" /> : <ArrowDownRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" />}
-                    {Math.abs(mrrGrowth).toFixed(1)}%
-                  </div>
+                  {mrrGrowth !== 0 && (
+                    <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${mrrGrowth >= 0 ? 'bg-[#00D395]/10 text-[#00D395]' : 'bg-[#FF4D4F]/10 text-[#FF4D4F]'}`}>
+                      {mrrGrowth >= 0 ? <ArrowUpRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" /> : <ArrowDownRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" />}
+                      {Math.abs(mrrGrowth).toFixed(1)}%
+                    </div>
+                  )}
                 </div>
-                <div className="mt-4"><SparkLine data={chartData} dataKey="mrr" color="#00D395" /></div>
+                {mrrChartData.length > 1 && (
+                  <div className="mt-4"><SparkLine data={mrrChartData} dataKey="mrr" color="#00D395" /></div>
+                )}
               </CardContent>
             </Card>
 
-            {/* KPI 2: Runway */}
+            {/* KPI 2: Target MRR */}
+            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+              <CardContent className="p-5">
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Revenue Target</p>
+                <div className="flex items-end justify-between">
+                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                    {targetMrr > 0 ? `${currencySymbol}${(targetMrr / 1000).toFixed(1)}k` : '—'}
+                  </h3>
+                </div>
+                {targetMrr > 0 && currentMrr > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <Progress value={Math.min((currentMrr / targetMrr) * 100, 100)} className="h-2 bg-gray-100 [&>div]:bg-[#635BFF]" />
+                    <p className="text-[10px] text-gray-400 text-right font-bold uppercase tracking-widest">
+                      {((currentMrr / targetMrr) * 100).toFixed(0)}% of target
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* KPI 3: Cash Balance */}
+            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+              <CardContent className="p-5">
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash Balance</p>
+                <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                  {currentCash > 0
+                    ? currentCash >= 1000000
+                      ? `${currencySymbol}${(currentCash / 1000000).toFixed(2)}M`
+                      : `${currencySymbol}${(currentCash / 1000).toFixed(1)}k`
+                    : '—'}
+                </h3>
+              </CardContent>
+            </Card>
+
+            {/* KPI 4: Burn (Interactive) */}
+            <Card
+              className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden cursor-pointer hover:border-[#FF4D4F]/40 hover:shadow-md transition-all group"
+              onClick={cycleTimeframe}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Burn</p>
+                  <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    <RefreshCw className="w-2.5 h-2.5 group-hover:rotate-180 transition-transform duration-500" />
+                    {burnTimeframe}
+                  </div>
+                </div>
+                <div className="flex items-end justify-between">
+                  {(() => {
+                    // Calculate burn from live transactions by timeframe
+                    const ms = burnTimeframe === "daily" ? 86400000 : burnTimeframe === "weekly" ? 604800000 : 2592000000;
+                    const filtered = financialTxs.filter(tx => tx.month && isWithinMs(tx.month, ms));
+                    const liveBurn = filtered.reduce((s, tx) => s + (tx.expenses || 0), 0);
+                    // Fallback to pulse data if no transactions
+                    const displayBurn = financialTxs.length > 0 ? liveBurn : currentBurn;
+                    return (
+                      <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                        {displayBurn > 0 ? `${currencySymbol}${displayBurn >= 1000 ? (displayBurn / 1000).toFixed(1) + 'k' : displayBurn.toFixed(0)}` : '—'}
+                      </h3>
+                    );
+                  })()}
+                </div>
+                <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-gray-100 font-medium">
+                  Click to toggle Daily · Weekly · Monthly
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* KPI 5: Runway */}
             <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
               <CardContent className="p-5">
                 <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash Runway</p>
                 <div className="flex items-end justify-between">
-                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">{runwayMonthsStr} <span className="text-lg text-gray-400 font-medium">mo</span></h3>
-                  <Badge variant="outline" className={`border-none ${runwayValue >= 12 ? 'text-[#878A22] bg-[#878A22]/10' : 'text-[#FF4D4F] bg-[#FF4D4F]/10'} font-bold`}>
-                    {runwayValue >= 12 ? 'Healthy' : 'Low Runway'}
-                  </Badge>
+                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                    {runwayValue > 0 ? <>{runwayMonthsStr} <span className="text-lg text-gray-400 font-medium">mo</span></> : '—'}
+                  </h3>
+                  {runwayValue > 0 && (
+                    <Badge variant="outline" className={`border-none ${runwayValue >= 12 ? 'text-[#878A22] bg-[#878A22]/10' : 'text-[#FF4D4F] bg-[#FF4D4F]/10'} font-bold`}>
+                      {runwayValue >= 12 ? 'Healthy' : 'Low Runway'}
+                    </Badge>
+                  )}
                 </div>
-                <div className="mt-6 space-y-2">
-                  <Progress value={(Math.min(runwayValue, 24) / 24) * 100} className="h-2 bg-gray-100 [&>div]:bg-[#00D395]" />
-                  <p className="text-[10px] text-gray-400 text-right font-bold uppercase tracking-widest">Target: &gt;18 mo</p>
-                </div>
+                {runwayValue > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <Progress value={(Math.min(runwayValue, 24) / 24) * 100} className="h-2 bg-gray-100 [&>div]:bg-[#00D395]" />
+                    <p className="text-[10px] text-gray-400 text-right font-bold uppercase tracking-widest">Target: &gt;18 mo</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* KPI 3: Burn Rate */}
+            {/* KPI 6: Total Active Customers */}
             <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
               <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">{labelBurn}</p>
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Total Active Customers</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {currencySymbol}{(currentBurn / 1000).toFixed(1)}k
+                    {totalActiveCustomers > 0 ? totalActiveCustomers.toLocaleString() : '—'}
                   </h3>
+                  {customerGrowth !== 0 && (
+                    <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${customerGrowth >= 0 ? 'bg-[#00D395]/10 text-[#00D395]' : 'bg-[#FF4D4F]/10 text-[#FF4D4F]'}`}>
+                      {customerGrowth >= 0 ? <ArrowUpRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" /> : <ArrowDownRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" />}
+                      {Math.abs(customerGrowth).toFixed(1)}%
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-4 pt-4 border-t border-gray-100 font-medium">
-                  {latestPulse?.expenses ? "Actual expenses from latest pulse." : "No expense data logged yet."}
+                  {totalActiveCustomers > 0 ? "From your latest pulse data." : "No customer data logged yet."}
                 </p>
               </CardContent>
-            </Card>
-
-            {/* KPI 4: Active Users */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
-              <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">{labelUsers}</p>
-                <div className="flex items-end justify-between">
-                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">{currentUsers.toLocaleString()}</h3>
-                  <div className={`flex items-center text-sm font-bold bg-${userGrowth >= 0 ? '[#00D395]' : '[#FF4D4F]'}/10 px-2 py-0.5 rounded text-${userGrowth >= 0 ? '[#00D395]' : '[#FF4D4F]'}`}>
-                    {userGrowth >= 0 ? <ArrowUpRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" /> : <ArrowDownRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" />}
-                    {Math.abs(userGrowth).toFixed(1)}%
-                  </div>
-                </div>
-                <div className="mt-4"><SparkLine data={chartData} dataKey="new" color="#00D395" /></div>
-              </CardContent>
-            </Card>
-
-            {/* KPI 5: Churn Rate */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
-              <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">{labelChurn}</p>
-                <div className="flex items-end justify-between">
-                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">{churnRate}%</h3>
-                </div>
-                <p className="text-xs text-gray-500 mt-4 pt-4 border-t border-gray-100 font-medium">
-                  {latestPulse?.lost_users ? "Calculated from monthly churn logs." : "No churn data logged yet."}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* KPI 6: Cash Balance */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl flex flex-col justify-between overflow-hidden">
-              <CardContent className="p-5 pb-2">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash Balance</p>
-                <h3 className="text-4xl font-bold text-[#1A1A1A] tabular-nums tracking-tight mt-1">
-                  {currencySymbol}{(currentCash / 1000000).toFixed(2)}M
-                </h3>
-              </CardContent>
-              <div className="px-5 pb-5">
-                <div className="w-full bg-[#F9F6F2] border border-gray-100 rounded-lg p-3 flex items-center justify-between">
-                  <span className="text-xs text-gray-500 font-medium">Next Payroll:</span>
-                  <span className="text-xs font-bold text-[#1A1A1A]">-{currencySymbol}55k in 4d</span>
-                </div>
-              </div>
             </Card>
           </div>
 
           {/* ZONE 2: MAIN CHARTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Revenue Chart */}
+            {/* MRR vs Target Chart */}
             <Card className="bg-white border-gray-100 shadow-sm lg:col-span-2 rounded-2xl">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">{labelMrr} Trajectory</CardTitle>
-                <CardDescription className="text-gray-500">Actual {labelMrr} vs Target Projection</CardDescription>
+                <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">Revenue vs Target Projection</CardTitle>
+                <CardDescription className="text-gray-500">Actual MRR compared to your target each month</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[320px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 20, right: 20, left: 40, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="month" stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} dy={10} />
-                      <YAxis stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val/1000}k`} dx={-10} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', color: '#1A1A1A', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
-                        itemStyle={{ color: '#1A1A1A', fontWeight: 600 }}
-                        cursor={{ fill: '#f9f9f9' }}
-                      />
-                      <Bar 
-                        dataKey="mrr" 
-                        fill="#00D395" 
-                        radius={[6, 6, 0, 0]} 
-                        barSize={32}
-                        activeBar={{ fill: '#00A389' }}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* User Growth */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">User Growth & Churn</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[250px] w-full mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="month" stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} dy={10} />
-                      <YAxis stroke="#999" tick={{fill: '#666', fontSize: 12}} axisLine={false} tickLine={false} dx={-10} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }} 
-                        cursor={{fill: '#f9f9f9'}}
-                      />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px', color: '#666' }} />
-                      <Bar dataKey="new" name="New Users" stackId="a" fill="#00D395" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="churned" name="Churned" stackId="a" fill="#FF4D4F" radius={[0, 0, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                {mrrChartData.length > 0 ? (
+                  <div className="h-[320px] w-full mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={mrrChartData} margin={{ top: 20, right: 20, left: 40, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="month" stroke="#999" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} dy={10} />
+                        <YAxis stroke="#999" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val / 1000}k`} dx={-10} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', color: '#1A1A1A', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                          itemStyle={{ color: '#1A1A1A', fontWeight: 600 }}
+                          cursor={{ fill: '#f9f9f9' }}
+                        />
+                        <Bar
+                          dataKey="mrr"
+                          name="Actual MRR"
+                          fill="#00D395"
+                          radius={[6, 6, 0, 0]}
+                          barSize={28}
+                          activeBar={{ fill: '#00A389' }}
+                        />
+                        <Bar
+                          dataKey="target"
+                          name="Revenue Target"
+                          fill="#635BFF"
+                          radius={[6, 6, 0, 0]}
+                          barSize={28}
+                          opacity={0.3}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-[320px] mt-4 flex flex-col items-center justify-center text-center p-6 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-sm text-gray-400 font-medium italic">Submit your first Monthly Pulse to see your MRR trajectory.</p>
+                    <Button variant="link" onClick={() => navigate('/updates')} className="text-[#00D395] text-xs mt-2 uppercase tracking-widest font-bold">Submit Pulse</Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             {/* Burn Breakdown */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl">
+            <Card className="bg-white border-gray-100 shadow-sm lg:col-span-2 rounded-2xl">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">Monthly Burn Breakdown</CardTitle>
               </CardHeader>
@@ -416,21 +420,21 @@ export default function FounderPortalPage() {
                     <div className="w-full sm:w-1/2 h-full min-h-[150px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie 
-                            data={burnBreakdownData} 
-                            cx="50%" 
-                            cy="50%" 
-                            innerRadius={60} 
-                            outerRadius={80} 
-                            paddingAngle={2} 
-                            dataKey="value" 
+                          <Pie
+                            data={burnBreakdownData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={2}
+                            dataKey="value"
                             stroke="none"
                           >
                             {burnBreakdownData.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }} itemStyle={{color: '#1A1A1A'}} />
+                          <Tooltip contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }} itemStyle={{ color: '#1A1A1A' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -441,7 +445,7 @@ export default function FounderPortalPage() {
                             <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: item.color }}></div>
                             <span className="text-xs text-gray-500 font-medium">{item.name}</span>
                           </div>
-                          <span className="text-xs font-bold text-[#1A1A1A] tabular-nums">{currencySymbol}{(item.value/1000).toFixed(1)}k</span>
+                          <span className="text-xs font-bold text-[#1A1A1A] tabular-nums">{currencySymbol}{(item.value / 1000).toFixed(1)}k</span>
                         </div>
                       ))}
                     </div>
@@ -459,39 +463,6 @@ export default function FounderPortalPage() {
 
         {/* RIGHT COLUMN: Action Feed (Takes 3 columns) */}
         <div className="xl:col-span-3 space-y-6">
-          
-          {/* Health Score */}
-          <Card className="bg-white border-gray-100 shadow-sm rounded-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#00D395] to-[#878A22]"></div>
-            <CardHeader className="pb-0 items-center text-center mt-2">
-              <CardTitle className="text-[10px] uppercase tracking-widest font-bold text-gray-400">Company Health</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center pb-6">
-              <div className="relative w-36 h-36 flex items-center justify-center my-6">
-                {/* SVG Gauge */}
-                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
-                  <circle cx="50" cy="50" r="45" fill="none" stroke="#f0f0f0" strokeWidth="8" />
-                  <circle 
-                    cx="50" cy="50" r="45" fill="none" 
-                    stroke={getHealthStroke(healthScore)} 
-                    strokeWidth="8" 
-                    strokeDasharray={`${(healthScore/100) * 283} 283`} 
-                    strokeLinecap="round"
-                    className="transition-all duration-1000 ease-out" 
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className={`text-5xl font-bold tracking-tighter ${getHealthColor(healthScore)}`}>{healthScore}</span>
-                  <span className="text-[9px] text-gray-400 uppercase tracking-widest font-bold mt-1">Score</span>
-                </div>
-              </div>
-              <div className="w-full bg-[#F9F6F2] border border-gray-100 rounded-xl p-3 text-center">
-                <p className="text-[11px] text-gray-500 font-medium">
-                  Weakest pillar: <strong className="text-[#1A1A1A] font-bold">Burn Efficiency</strong>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
 
           {/* Critical Alerts */}
           <Card className={`bg-white border-t-2 ${alerts[0]?.type === 'danger' ? 'border-t-[#FF4D4F]' : alerts[0]?.type === 'warning' ? 'border-t-[#F5A623]' : 'border-t-[#00D395]'} border-x-gray-100 border-b-gray-100 rounded-2xl shadow-sm`}>

@@ -1,487 +1,524 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
-import { 
-  DollarSign, TrendingDown, TrendingUp, Activity, 
-  Calculator, AlertCircle, ArrowUpRight, ArrowDownRight, 
-  Wallet, Users, FileText, Download, Filter, 
-  ArrowRight, ShieldCheck, Sparkles, TrendingUp as TrendIcon,
-  ChevronDown, Search, MoreHorizontal, Check, Loader2
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  TrendingDown, TrendingUp, ShieldCheck, Plus, Loader2,
+  ArrowUpRight, ArrowDownRight, Wallet, DollarSign, BarChart3,
+  Filter, Calendar
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
-  BarChart, Bar, Legend, ReferenceLine, LineChart, Line, Cell
+import { toast } from "@/hooks/use-toast";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend
 } from "recharts";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const REVENUE_RETENTION = [
-  { month: "Month 1", rate: 100 },
-  { month: "Month 2", rate: 94 },
-  { month: "Month 3", rate: 89 },
-  { month: "Month 4", rate: 86 },
-  { month: "Month 5", rate: 84 },
-  { month: "Month 6", rate: 82 },
-];
+// ─── Types ──────────────────────────────────────────────────────────────────
+type Timeframe = "daily" | "weekly" | "monthly";
+type TxType = "income" | "expense";
 
+type Transaction = {
+  id: string;
+  startup_id: string | null;
+  revenue: number | null;
+  expenses: number | null;
+  profit_loss: number | null;
+  month: string; // used as ISO date string
+  created_at: string | null;
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function isWithinDays(dateStr: string, days: number): boolean {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  return diff <= days * 24 * 60 * 60 * 1000;
+}
+
+function timeAgoStr(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+const INCOME_CATEGORIES = ["Sales", "Investment", "Grant", "Loan", "Other Income"];
+const EXPENSE_CATEGORIES = ["Salaries", "Software", "Rent", "Marketing", "Operations", "Other Expense"];
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 export default function FounderFinancialsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState("overview");
+  const queryClient = useQueryClient();
 
-  // Fetch Startup Data
+  const [timeframe, setTimeframe] = useState<Timeframe>("monthly");
+  const [showForm, setShowForm] = useState(false);
+  const [txType, setTxType] = useState<TxType>("expense");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [txDate, setTxDate] = useState(new Date().toISOString().split("T")[0]);
+
+  // ── Fetch startup ──────────────────────────────────────────────────────────
   const { data: startup, isLoading: isStartupLoading } = useQuery({
-    queryKey: ["startup", user?.id],
+    queryKey: ["startup-financials-page", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { data: profile } = await supabase.from("profiles").select("startup_id").eq("id", user.id).single();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("startup_id")
+        .eq("id", user.id)
+        .single();
       if (!profile?.startup_id) return null;
-      const { data, error } = await supabase.from("startups").select("*").eq("id", profile.startup_id).single();
+      const { data, error } = await supabase
+        .from("startups")
+        .select("id, name, currency")
+        .eq("id", profile.startup_id)
+        .single();
       if (error) throw error;
       return data;
     },
     enabled: !!user,
   });
 
-  // Fetch Pulse History
-  const { data: pulses = [], isLoading: isPulsesLoading } = useQuery({
-    queryKey: ["pulses", startup?.id],
+  const sym = startup?.currency === "NGN" ? "₦" : startup?.currency === "GBP" ? "£" : startup?.currency === "EUR" ? "€" : "$";
+
+  // ── Fetch transactions (startup_financials) ────────────────────────────────
+  const { data: transactions = [], isLoading: isTxLoading } = useQuery<Transaction[]>({
+    queryKey: ["startup-financials", startup?.id],
     queryFn: async () => {
       if (!startup?.id) return [];
       const { data, error } = await supabase
-        .from("pulses")
-        .select("*")
+        .from("startup_financials")
+        .select("id, startup_id, revenue, expenses, profit_loss, month, created_at")
         .eq("startup_id", startup.id)
         .order("month", { ascending: false });
       if (error) throw error;
-      return data;
+      return data || [];
     },
     enabled: !!startup?.id,
   });
 
-  // Calculator State
-  const [mrrGrowth, setMrrGrowth] = useState(8); 
-  const [newHires, setNewHires] = useState(2);
-  const [retentionRate, setRetentionRate] = useState(90); // 3rd Slider: Customer Retention
-  
-  const latestPulse = pulses[0] || { mrr: 0, expenses: 0, cash_in_bank: 0 };
-  const startingCash = latestPulse.cash_in_bank || 0;
-  const startingMrr = latestPulse.mrr || 0;
-  const baseExpenses = latestPulse.expenses || 0;
-  const costPerHire = 8000;
+  // ── Also fetch pulses for the Net Burn fix ─────────────────────────────────
+  const { data: pulses = [] } = useQuery({
+    queryKey: ["pulses-financials", startup?.id],
+    queryFn: async () => {
+      if (!startup?.id) return [];
+      const { data, error } = await supabase
+        .from("pulses")
+        .select("mrr, expenses, cash_in_bank, month")
+        .eq("startup_id", startup.id)
+        .order("month", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!startup?.id,
+  });
 
-  const sym = startup?.currency === 'NGN' ? '₦' : startup?.currency === 'GBP' ? '£' : startup?.currency === 'EUR' ? '€' : '$';
+  // ── Submit a transaction ───────────────────────────────────────────────────
+  const addTx = useMutation({
+    mutationFn: async () => {
+      if (!startup?.id || !amount || !txDate) throw new Error("Please fill all required fields.");
+      const val = parseFloat(amount);
+      if (isNaN(val) || val <= 0) throw new Error("Amount must be a positive number.");
+      const payload = {
+        startup_id: startup.id,
+        month: txDate,
+        revenue: txType === "income" ? val : 0,
+        expenses: txType === "expense" ? val : 0,
+        profit_loss: txType === "income" ? val : -val,
+      };
+      const { error } = await supabase.from("startup_financials").insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["startup-financials", startup?.id] });
+      toast({ title: "Transaction logged! ✅", description: "Your ledger has been updated." });
+      setShowForm(false);
+      setAmount("");
+      setCategory("");
+      setDescription("");
+      setTxDate(new Date().toISOString().split("T")[0]);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to log", description: err.message, variant: "destructive" });
+    },
+  });
 
-  // Unit Economics Proxies
-  const calculateProxies = () => {
-    if (pulses.length < 2) return { ltvCac: "N/A", retention: "N/A", burnRate: "0" };
-    
-    // Simplistic proxy calculations based on recent pulses
-    const latest = pulses[0];
-    const prev = pulses[1];
-    
-    const churnProxy = (latest.lost_users || 0) / Math.max(prev.active_users || 1, 1);
-    const retention = ((1 - churnProxy) * 100).toFixed(1);
-    
-    const arpu = (latest.mrr || 0) / Math.max(latest.active_users || 1, 1);
-    const cac = (latest.spend_marketing || 0) / Math.max(latest.new_users || 1, 1);
-    
-    let ltvCac = "N/A";
-    if (churnProxy > 0 && cac > 0) {
-      const ltv = arpu / churnProxy;
-      ltvCac = (ltv / cac).toFixed(1) + "x";
-    }
+  // ── Aggregate KPIs ─────────────────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    // Filter transactions by timeframe
+    const filtered = transactions.filter((tx) => {
+      if (!tx.month) return false;
+      if (timeframe === "daily") return isWithinDays(tx.month, 1);
+      if (timeframe === "weekly") return isWithinDays(tx.month, 7);
+      return isWithinDays(tx.month, 30);
+    });
 
-    // Default Runway calculation
-    const currentBurn = Math.max(0, (latest.expenses || 0) - (latest.mrr || 0));
-    
-    return { ltvCac, retention: retention + "%", currentBurn };
-  };
+    const totalIncome = filtered.reduce((s, tx) => s + (tx.revenue || 0), 0);
+    const totalExpenses = filtered.reduce((s, tx) => s + (tx.expenses || 0), 0);
+    const profit = totalIncome - totalExpenses;
 
-  const proxies = useMemo(() => calculateProxies(), [pulses]);
+    // Net Burn fix: use pulses if no transactions
+    const latestPulse = pulses[0] || null;
+    const netBurnFromPulse = latestPulse
+      ? Math.max(0, (latestPulse.expenses || 0) - (latestPulse.mrr || 0))
+      : 0;
 
-  const projectionData = useMemo(() => {
-    let currentCash = startingCash;
-    let currentMrr = startingMrr;
-    let currentExpenses = baseExpenses;
+    const netBurn = transactions.length > 0
+      ? Math.max(0, totalExpenses - totalIncome)
+      : netBurnFromPulse;
 
-    
-    const data = [];
-    const months = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12'];
-    
-    for (let i = 0; i < 12; i++) {
-      // Dynamic expenses factoring in hiring velocity
-      const activeExpenses = currentExpenses + (newHires * costPerHire * (i + 1) / 12); 
-      
-      const burn = activeExpenses - currentMrr;
-      currentCash = currentCash - burn;
-      data.push({
-        month: months[i],
-        cash: Math.max(0, currentCash),
-        realCash: currentCash,
-        burn: burn,
-        mrr: currentMrr
-      });
-      // Growth is offset by the churn (100 - retention)
-      const netGrowth = (mrrGrowth / 100) - ((100 - retentionRate) / 100);
-      currentMrr = currentMrr * (1 + netGrowth);
-    }
-    return data;
-  }, [mrrGrowth, newHires, retentionRate, startingCash, startingMrr, baseExpenses]);
+    return { totalIncome, totalExpenses, profit, netBurn };
+  }, [transactions, pulses, timeframe]);
 
-  const monthsOfRunway = projectionData.findIndex(d => d.realCash <= 0);
-  const runwayDisplay = monthsOfRunway === -1 ? "> 12" : monthsOfRunway.toString();
-  const isHealthy = monthsOfRunway === -1 || monthsOfRunway >= 9;
-
-  // Chart Formatting
-  const formatCurrency = (val: number) => {
-    if (val >= 1000000) return `${sym}${(val / 1000000).toFixed(1)}M`;
-    if (val >= 1000) return `${sym}${(val / 1000).toFixed(0)}k`;
-    return `${sym}${val}`;
-  };
-
+  // ── Chart data ─────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
-    return [...pulses].reverse().map(p => ({
-      month: new Date(p.month).toLocaleDateString('default', { month: 'short', year: '2-digit' }),
-      mrr: p.mrr || 0,
-      expenses: p.expenses || 0
-    }));
-  }, [pulses]);
+    if (timeframe === "daily") {
+      // Last 14 days
+      const days: Record<string, { label: string; income: number; expenses: number }> = {};
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split("T")[0];
+        days[key] = { label: d.toLocaleDateString("default", { month: "short", day: "numeric" }), income: 0, expenses: 0 };
+      }
+      transactions.forEach((tx) => {
+        const k = tx.month?.split("T")[0] || "";
+        if (days[k]) {
+          days[k].income += tx.revenue || 0;
+          days[k].expenses += tx.expenses || 0;
+        }
+      });
+      return Object.values(days);
+    }
+    if (timeframe === "weekly") {
+      // Last 8 weeks
+      const weeks: Record<number, { label: string; income: number; expenses: number }> = {};
+      for (let i = 7; i >= 0; i--) {
+        weeks[i] = { label: `W-${i}`, income: 0, expenses: 0 };
+      }
+      transactions.forEach((tx) => {
+        if (!tx.month) return;
+        const diff = Math.floor((Date.now() - new Date(tx.month).getTime()) / (7 * 24 * 60 * 60 * 1000));
+        if (diff >= 0 && diff <= 7) {
+          weeks[diff].income += tx.revenue || 0;
+          weeks[diff].expenses += tx.expenses || 0;
+        }
+      });
+      return Object.values(weeks).reverse();
+    }
+    // Monthly: last 12 months grouped
+    const months: Record<string, { label: string; income: number; expenses: number }> = {};
+    transactions.forEach((tx) => {
+      if (!tx.month) return;
+      const d = new Date(tx.month);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!months[key]) {
+        months[key] = { label: d.toLocaleDateString("default", { month: "short", year: "2-digit" }), income: 0, expenses: 0 };
+      }
+      months[key].income += tx.revenue || 0;
+      months[key].expenses += tx.expenses || 0;
+    });
+    // Fill from pulse data if no transactions exist
+    if (Object.keys(months).length === 0) {
+      pulses.slice().reverse().forEach((p) => {
+        const d = new Date(p.month);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        months[key] = {
+          label: d.toLocaleDateString("default", { month: "short", year: "2-digit" }),
+          income: p.mrr || 0,
+          expenses: p.expenses || 0,
+        };
+      });
+    }
+    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
+  }, [transactions, pulses, timeframe]);
 
-  if (isStartupLoading || isPulsesLoading) {
-    return <div className="flex h-[calc(100vh-4rem)] items-center justify-center"><Loader2 className="animate-spin text-[#00D395]" /></div>;
+  const fmt = (val: number) => {
+    if (val >= 1_000_000) return `${sym}${(val / 1_000_000).toFixed(1)}M`;
+    if (val >= 1_000) return `${sym}${(val / 1_000).toFixed(1)}k`;
+    return `${sym}${val.toFixed(0)}`;
+  };
+
+  if (isStartupLoading || isTxLoading) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="animate-spin text-[#00D395] w-8 h-8" />
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20">
-      
-      {/* 1. CFO HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-4 sm:px-0">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[#00D395]">
+    <div className="max-w-4xl mx-auto space-y-8 pb-20 font-sans">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-[#00D395] mb-1">
             <ShieldCheck className="w-4 h-4" />
             <span className="text-[10px] uppercase tracking-widest font-bold">Financial Cockpit</span>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-[#1A1A1A] font-serif">Portfolio Financials</h1>
-          <p className="text-gray-500 max-w-2xl">
-            Detailed unit economics, runway modeling, and historical growth trends for <strong className="text-[#1A1A1A]">Series A Readiness</strong>.
-          </p>
+          <h1 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">Financials</h1>
+          <p className="text-xs text-gray-500 font-medium mt-0.5">Income · Expenses · Net Burn · Profit</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="border-gray-200 text-gray-600 hover:text-[#1A1A1A] h-10 gap-2">
-            <Download className="w-4 h-4" /> Export CSV
+        <div className="flex gap-2">
+          <Button
+            onClick={() => { setTxType("income"); setShowForm(true); }}
+            className="bg-[#00D395] hover:bg-[#00A389] text-white text-xs font-bold rounded-xl px-4 h-10 gap-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Income
           </Button>
-          <Button className="bg-[#00D395] hover:bg-[#00A389] text-white h-10 gap-2 font-bold shadow-sm">
-             Update Pulse
+          <Button
+            onClick={() => { setTxType("expense"); setShowForm(true); }}
+            variant="outline"
+            className="border-[#FF4D4F]/40 text-[#FF4D4F] hover:bg-[#FF4D4F]/5 text-xs font-bold rounded-xl px-4 h-10 gap-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Expense
           </Button>
         </div>
       </div>
 
-      {/* 2. CORE KPIS STRIP */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 px-4 sm:px-0">
+      {/* ── KPI Strip ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Cash in Bank", value: formatCurrency(startingCash), trend: "Latest", icon: Wallet, color: "#00D395" },
-          { label: "Net Burn Rate", value: formatCurrency(proxies.currentBurn), trend: "Monthly", icon: TrendingDown, color: "#FF4D4F" },
-          { label: "Default Runway", value: (startup?.runway_months || runwayDisplay) + " Mo", trend: "Current", icon: Activity, color: "#878A22" },
-          { label: "Est. LTV:CAC", value: proxies.ltvCac, trend: "Proxy", icon: Sparkles, color: "#F5A623" },
-        ].map((kpi, i) => (
-          <Card key={i} className="bg-white border-gray-200 shadow-sm rounded-2xl">
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="p-2 rounded-xl bg-gray-50 border border-gray-100">
-                  <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
-                </div>
-                <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-500 uppercase font-bold">{kpi.trend}</Badge>
+          { label: "Total Income", value: fmt(kpis.totalIncome), icon: TrendingUp, color: "#00D395", bg: "bg-[#00D395]/8" },
+          { label: "Total Expenses", value: fmt(kpis.totalExpenses), icon: TrendingDown, color: "#FF4D4F", bg: "bg-[#FF4D4F]/8" },
+          {
+            label: "Profit",
+            value: fmt(Math.abs(kpis.profit)),
+            prefix: kpis.profit < 0 ? "-" : "+",
+            icon: kpis.profit >= 0 ? ArrowUpRight : ArrowDownRight,
+            color: kpis.profit >= 0 ? "#00D395" : "#FF4D4F",
+            bg: kpis.profit >= 0 ? "bg-[#00D395]/8" : "bg-[#FF4D4F]/8",
+          },
+          { label: "Net Burn", value: fmt(kpis.netBurn), icon: Wallet, color: "#F5A623", bg: "bg-[#F5A623]/8" },
+        ].map((kpi) => (
+          <Card key={kpi.label} className="bg-white border-gray-100 shadow-sm rounded-2xl">
+            <CardContent className="p-4 space-y-2">
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${kpi.bg}`}>
+                <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
               </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">{kpi.label}</p>
-                <p className="text-2xl font-bold text-[#1A1A1A] tabular-nums">{kpi.value}</p>
-              </div>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500">{kpi.label}</p>
+              <p className="text-xl font-bold text-[#1A1A1A] tabular-nums">
+                {"prefix" in kpi ? kpi.prefix : ""}{kpi.value}
+              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="bg-white border border-gray-200 p-1 h-12 w-full md:w-auto rounded-full shadow-sm">
-          <TabsTrigger value="overview" className="flex-1 md:px-8 data-[state=active]:bg-[#00D395] data-[state=active]:text-white rounded-full transition-all font-bold">Overview</TabsTrigger>
-          <TabsTrigger value="modeling" className="flex-1 md:px-8 data-[state=active]:bg-[#00D395] data-[state=active]:text-white rounded-full transition-all font-bold">Runway Simulator</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 md:px-8 data-[state=active]:bg-[#00D395] data-[state=active]:text-white rounded-full transition-all font-bold">Pulse History</TabsTrigger>
-        </TabsList>
+      {/* ── Revenue vs Expenses Chart ── */}
+      <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100 pb-4 bg-gray-50/50">
+          <div>
+            <CardTitle className="text-base font-bold text-[#1A1A1A]">Income vs Expenses</CardTitle>
+            <CardDescription className="text-xs text-gray-500">Real cash flow over time</CardDescription>
+          </div>
+          {/* Timeframe Toggle */}
+          <div className="flex bg-gray-100 rounded-full p-0.5 gap-0.5">
+            {(["daily", "weekly", "monthly"] as Timeframe[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTimeframe(t)}
+                className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full transition-all ${
+                  timeframe === t ? "bg-white text-[#1A1A1A] shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {t === "daily" ? "Day" : t === "weekly" ? "Week" : "Month"}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="h-[280px] w-full">
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="label" stroke="#999" tick={{ fill: "#999", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis stroke="#999" tick={{ fill: "#999", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${sym}${v >= 1000 ? (v / 1000).toFixed(0) + "k" : v}`} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: "#fff", borderColor: "#eee", borderRadius: "12px", boxShadow: "0 4px 20px rgba(0,0,0,0.06)", fontSize: 12 }}
+                    cursor={{ fill: "#f9f9f9" }}
+                    formatter={(val: number) => fmt(val)}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: "11px", paddingTop: "16px", color: "#666" }} />
+                  <Bar dataKey="income" name="Income" fill="#00D395" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expenses" name="Expenses" fill="#FF4D4F" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-sm text-gray-400 font-medium border border-dashed border-gray-200 rounded-xl">
+                Log your first transaction to see your chart
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* TAB 1: OVERVIEW & INSIGHTS */}
-        <TabsContent value="overview" className="space-y-8 mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            
-            {/* Left Column: Growth Trends */}
-            <div className="lg:col-span-8 space-y-6">
-              <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100 pb-4 bg-gray-50/50">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-[#1A1A1A]">Revenue vs Expenses</CardTitle>
-                    <CardDescription className="text-xs text-gray-500 font-medium">MoM P&L Trajectory</CardDescription>
-                  </div>
-                  <Badge className="bg-[#00D395]/10 text-[#00D395] border-none font-bold">Positive Trend</Badge>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="h-[300px] w-full">
-                    {chartData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                          <XAxis dataKey="month" stroke="#999" tick={{fill: '#666', fontSize: 11}} axisLine={false} tickLine={false} />
-                          <YAxis stroke="#999" tick={{fill: '#666', fontSize: 11}} axisLine={false} tickLine={false} tickFormatter={(v) => `${sym}${v >= 1000 ? v/1000 + 'k' : v}`} />
-                          <RechartsTooltip 
-                            contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', color: '#1A1A1A' }}
-                            cursor={{fill: '#f9f9f9'}}
-                          />
-                          <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '20px', color: '#666' }} />
-                          <Bar dataKey="mrr" name="Revenue" fill="#00D395" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="expenses" name="Expenses" fill="#FF4D4F" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm text-gray-400 font-medium border border-dashed border-gray-200 rounded-xl">
-                        Log your first Pulse to see charting
+      {/* ── Ledger ── */}
+      <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100 pb-4 bg-gray-50/50">
+          <div>
+            <CardTitle className="text-base font-bold text-[#1A1A1A]">Transaction Ledger</CardTitle>
+            <CardDescription className="text-xs text-gray-500">Every dollar logged, chronologically</CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs font-bold">{transactions.length} entries</Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          {transactions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                <BarChart3 className="w-5 h-5 text-gray-300" />
+              </div>
+              <p className="text-sm text-gray-400 font-medium">No transactions logged yet.</p>
+              <p className="text-xs text-gray-300 mt-1">Click "Add Income" or "Add Expense" to get started.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {transactions.map((tx) => {
+                const isIncome = (tx.revenue || 0) > 0;
+                const amount = isIncome ? (tx.revenue || 0) : (tx.expenses || 0);
+                return (
+                  <div key={tx.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isIncome ? "bg-[#00D395]/10" : "bg-[#FF4D4F]/10"}`}>
+                        {isIncome
+                          ? <ArrowUpRight className="w-4 h-4 text-[#00D395]" />
+                          : <ArrowDownRight className="w-4 h-4 text-[#FF4D4F]" />
+                        }
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Unit Economics Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="bg-white border-gray-200 shadow-sm rounded-2xl">
-                   <CardContent className="p-6">
-                      <div className="flex justify-between items-center mb-6">
-                        <h4 className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">Revenue Retention</h4>
-                        <TrendIcon className="w-4 h-4 text-[#00D395]" />
-                      </div>
-                       <div className="h-[180px] w-full flex items-center justify-center">
-                         <div className="text-center">
-                           <p className="text-3xl font-bold text-[#1A1A1A]">{proxies.retention}</p>
-                           <p className="text-[10px] uppercase font-bold text-gray-500 mt-2">Latest Cohort Proxy</p>
-                         </div>
-                       </div>
-                       <div className="mt-4 flex justify-between items-center pt-2 border-t border-gray-50">
-                          <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Est. Retention</span>
-                          <span className="text-sm font-bold text-[#1A1A1A]">{proxies.retention}</span>
-                       </div>
-                   </CardContent>
-                </Card>
-
-                <Card className="bg-white border-gray-200 shadow-sm rounded-2xl p-6 flex flex-col justify-between">
-                   <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                         <h4 className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest">Efficiency Multiplier</h4>
-                         <Badge className="bg-[#F5A623]/10 text-[#F5A623] border-none font-bold">Tier 1</Badge>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-4xl font-bold text-[#1A1A1A]">{proxies.ltvCac}</p>
-                        <p className="text-xs text-gray-600 font-medium leading-relaxed">
-                          Estimated LTV:CAC ratio based on recent customer acquisition and churn proxies.
+                      <div>
+                        <p className="text-sm font-semibold text-[#1A1A1A]">{isIncome ? "Income" : "Expense"}</p>
+                        <p className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
+                          <Calendar className="w-2.5 h-2.5" />
+                          {tx.month ? new Date(tx.month).toLocaleDateString("default", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                          {tx.created_at && <span className="opacity-50">· {timeAgoStr(tx.created_at)}</span>}
                         </p>
                       </div>
-                   </div>
-                   <div className="pt-6 border-t border-gray-100 flex gap-2">
-                      <Button variant="ghost" className="text-[10px] text-gray-500 hover:text-[#00D395] p-0 h-auto gap-1 font-bold uppercase tracking-widest">
-                        View Compares <ArrowRight className="w-3 h-3" />
-                      </Button>
-                   </div>
-                </Card>
+                    </div>
+                    <p className={`text-sm font-bold tabular-nums ${isIncome ? "text-[#00D395]" : "text-[#FF4D4F]"}`}>
+                      {isIncome ? "+" : "-"}{fmt(amount)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Add Transaction Modal ── */}
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="sm:max-w-[420px] rounded-2xl bg-white border-gray-100 shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1A1A]">
+              {txType === "income" ? "💰 Log Income" : "💸 Log Expense"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {/* Type Toggle */}
+            <div className="flex bg-gray-100 rounded-full p-0.5 gap-0.5">
+              {(["income", "expense"] as TxType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTxType(t)}
+                  className={`flex-1 text-xs font-bold py-2 rounded-full transition-all capitalize ${
+                    txType === t
+                      ? t === "income"
+                        ? "bg-[#00D395] text-white shadow-sm"
+                        : "bg-[#FF4D4F] text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Amount *</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">{sym}</span>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="pl-7 rounded-xl border-gray-200 focus:ring-[#00D395]/50 text-[#1A1A1A] font-semibold"
+                />
               </div>
             </div>
 
-            {/* Right Column: Insights Panel (Anuri's Research) */}
-            <div className="lg:col-span-4 space-y-6">
-              <Card className="bg-[#00D395]/5 border-[#00D395]/20 shadow-sm rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-[#00D395]" /> Lab Insights
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-3 rounded-xl bg-white border border-gray-200 shadow-sm space-y-2">
-                    <div className="flex items-center gap-2 text-[#00D395]">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      <span className="text-[11px] font-bold uppercase tracking-widest">Growth Signal</span>
-                    </div>
-                    <p className="text-[12px] text-gray-600 font-medium leading-snug">
-                      Your MRR growth is accelerating relative to your hiring plan. You have room to increase marketing spend.
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-white border border-gray-200 shadow-sm space-y-2">
-                    <div className="flex items-center gap-2 text-[#F5A623]">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span className="text-[11px] font-bold uppercase tracking-widest">Efficiency Alert</span>
-                    </div>
-                    <p className="text-[12px] text-gray-600 font-medium leading-snug">
-                      Churn spiked to 4.2% in March. This is above your cohort average (2.5%).
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Series A Readiness Checklist */}
-              <div className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm space-y-4">
-                <h4 className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Readiness Audit</h4>
-                <div className="space-y-3">
-                  {[
-                    { label: "12+ Months Runway", done: true },
-                    { label: "MoM Growth > 10%", done: false },
-                    { label: "LTV:CAC > 3x", done: true },
-                    { label: "Clean Data Vault", done: true }
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600 font-semibold">{item.label}</span>
-                      {item.done ? <CheckCircle2 className="w-4 h-4 text-[#00D395]" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-200"></div>}
-                    </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="rounded-xl border-gray-200 text-[#1A1A1A]">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(txType === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
-                </div>
-              </div>
+                </SelectContent>
+              </Select>
             </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Date *</Label>
+              <Input
+                type="date"
+                value={txDate}
+                onChange={(e) => setTxDate(e.target.value)}
+                className="rounded-xl border-gray-200 text-[#1A1A1A]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Description</Label>
+              <Input
+                placeholder="e.g. AWS Cloud Invoice — May"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="rounded-xl border-gray-200 text-[#1A1A1A]"
+              />
+            </div>
+
+            <Button
+              onClick={() => addTx.mutate()}
+              disabled={addTx.isPending || !amount || !txDate}
+              className={`w-full font-bold rounded-xl h-11 text-sm transition-all ${
+                txType === "income"
+                  ? "bg-[#00D395] hover:bg-[#00A389] text-white"
+                  : "bg-[#FF4D4F] hover:bg-[#cc3b3d] text-white"
+              }`}
+            >
+              {addTx.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {addTx.isPending ? "Saving..." : `Log ${txType === "income" ? "Income" : "Expense"}`}
+            </Button>
           </div>
-        </TabsContent>
+        </DialogContent>
+      </Dialog>
 
-        {/* TAB 2: MODELING (EXISTING LOGIC) */}
-        <TabsContent value="modeling" className="mt-6">
-          <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-             <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-                <div className="p-8 space-y-8 bg-gray-50/50">
-                   <div className="space-y-1">
-                      <h3 className="text-lg font-bold text-[#1A1A1A]">Runway Simulator</h3>
-                      <p className="text-xs text-gray-500 font-medium">Adjust variables to see how hiring and growth impacts your zero-cash date.</p>
-                   </div>
-
-                   <div className="space-y-8">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] uppercase font-bold text-gray-500">MRR Growth Rate</label>
-                        <span className="text-[#00D395] font-mono font-bold">{mrrGrowth}%</span>
-                      </div>
-                      <Slider value={[mrrGrowth]} onValueChange={(v) => setMrrGrowth(v[0])} max={25} step={1} className="[&>span]:bg-[#00D395]" />
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[11px] uppercase font-bold text-gray-500">New Monthly Hires</label>
-                        <span className="text-[#FF4D4F] font-mono font-bold">{newHires}</span>
-                      </div>
-                      <Slider value={[newHires]} onValueChange={(v) => setNewHires(v[0])} max={10} step={1} className="[&>span]:bg-[#FF4D4F]" />
-                    </div>
-                  </div>
-
-                  <div className={`p-5 rounded-xl border ${isHealthy ? 'border-[#00D395]/20 bg-[#00D395]/5' : 'border-[#FF4D4F]/20 bg-[#FF4D4F]/5'}`}>
-                     <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Projected Outcome</p>
-                     <p className={`text-2xl font-bold ${isHealthy ? 'text-[#00D395]' : 'text-[#FF4D4F]'}`}>
-                        {monthsOfRunway === -1 ? "Infinite Runway (Alive)" : `Ran out in ${monthsOfRunway} Mo`}
-                     </p>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-2 p-8">
-                   <div className="h-[400px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={projectionData}>
-                          <defs>
-                            <linearGradient id="colorCash" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#00D395" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#00D395" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                          <XAxis dataKey="month" stroke="#999" tick={{fill: '#666', fontSize: 11}} axisLine={false} tickLine={false} />
-                          <YAxis stroke="#999" tick={{fill: '#666', fontSize: 11}} axisLine={false} tickLine={false} tickFormatter={(v) => `${sym}${v >= 1000 ? v/1000 + 'k' : v}`} />
-                          <RechartsTooltip contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', borderRadius: '8px', color: '#1A1A1A' }} />
-                          <ReferenceLine y={0} stroke="#FF4D4F" strokeDasharray="3 3" />
-                          <Area type="monotone" dataKey="realCash" stroke="#00D395" strokeWidth={3} fill="url(#colorCash)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                   </div>
-                </div>
-             </div>
-          </Card>
-        </TabsContent>
-
-        {/* TAB 3: PULSE HISTORY */}
-        <TabsContent value="history" className="mt-6">
-           <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-              <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50">
-                 <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 h-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#00D395]/50 transition-all shadow-sm text-[#1A1A1A]" placeholder="Search pulses..." />
-                 </div>
-                 <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="border-gray-200 text-gray-600 hover:text-[#1A1A1A] h-10 gap-2 font-bold">
-                       <Filter className="w-3.5 h-3.5" /> Filter
-                    </Button>
-                 </div>
-              </div>
-              <div className="overflow-x-auto">
-                 <table className="w-full text-left border-collapse">
-                    <thead>
-                       <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Month</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">MRR</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Burn</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Cash</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Users</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Runway</th>
-                          <th className="p-4 text-[11px] uppercase font-bold text-gray-500">Status</th>
-                          <th className="p-4"></th>
-                       </tr>
-                    </thead>
-                    <tbody>
-                       {pulses.length === 0 ? (
-                         <tr>
-                           <td colSpan={8} className="p-8 text-center text-gray-400 font-medium text-sm">No pulses submitted yet.</td>
-                         </tr>
-                       ) : (
-                         pulses.map((pulse) => {
-                           const isHealthy = (pulse.cash_in_bank || 0) > ((pulse.expenses || 0) * 3);
-                           const runway = pulse.expenses && pulse.expenses > 0 ? Math.round((pulse.cash_in_bank || 0) / pulse.expenses) : '>12';
-                           return (
-                             <tr key={pulse.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
-                                <td className="p-4 text-sm font-bold text-[#1A1A1A]">{new Date(pulse.month).toLocaleDateString('default', { month: 'short', year: 'numeric' })}</td>
-                                <td className="p-4 text-sm text-gray-600 font-medium tabular-nums">{formatCurrency(pulse.mrr || 0)}</td>
-                                <td className="p-4 text-sm text-gray-600 font-medium tabular-nums">{formatCurrency(pulse.expenses || 0)}</td>
-                                <td className="p-4 text-sm text-gray-600 font-medium tabular-nums">{formatCurrency(pulse.cash_in_bank || 0)}</td>
-                                <td className="p-4 text-sm text-gray-600 font-medium tabular-nums">{pulse.active_users || 'N/A'}</td>
-                                <td className="p-4 text-sm text-gray-600 font-medium">{runway} Mo</td>
-                                <td className="p-4">
-                                   <Badge className={`text-[10px] font-bold uppercase tracking-widest ${isHealthy ? 'bg-[#00D395]/10 text-[#00D395]' : 'bg-[#FF4D4F]/10 text-[#FF4D4F]'} border-none`}>
-                                      {isHealthy ? 'Healthy' : 'At Risk'}
-                                   </Badge>
-                                </td>
-                                <td className="p-4 text-right">
-                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-[#00D395]">
-                                      <MoreHorizontal className="w-4 h-4" />
-                                   </Button>
-                                </td>
-                             </tr>
-                           )
-                         })
-                       )}
-                    </tbody>
-                 </table>
-              </div>
-           </Card>
-        </TabsContent>
-      </Tabs>
-
-    </div>
-  );
-}
-
-// Helper component for checkmark
-function CheckCircle2({ className }: { className?: string }) {
-  return (
-    <div className={`flex items-center justify-center ${className}`}>
-      <Check className="w-full h-full" />
     </div>
   );
 }

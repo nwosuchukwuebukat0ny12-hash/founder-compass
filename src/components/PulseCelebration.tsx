@@ -62,7 +62,7 @@ export function PulseCelebration({ onDismiss }: PulseCelebrationProps) {
 
         {/* Text Content */}
         <div className="space-y-2 animate-in slide-in-from-bottom-4 fade-in duration-500 delay-300 fill-mode-both">
-          <h2 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">You're all set for April!</h2>
+          <h2 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">You're all set for {new Date().toLocaleString('default', { month: 'long' })}!</h2>
           <p className="text-sm text-gray-500 font-medium">Your Founder Pulse check-in has been submitted successfully.</p>
           <div className="flex items-center justify-center gap-2 text-sm font-semibold text-[#878A22] mt-2">
             Keep building 🚀
