@@ -22,10 +22,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const stageStyles: Record<string, string> = {
-  Early: "bg-blue-50 text-blue-700 border-blue-200",
-  Growth: "bg-violet-50 text-violet-700 border-violet-200",
-  Maturity: "bg-emerald-50 text-emerald-700 border-emerald-200",
+const categoryStyles: Record<string, string> = {
+  Ideation: "bg-blue-50 text-blue-700 border-blue-200",
+  Innovators: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  SME: "bg-amber-50 text-amber-700 border-amber-200",
 };
 
 const industryColors: Record<string, string> = {
@@ -69,10 +69,10 @@ export default function StartupsPage() {
         s.founder_name.toLowerCase().includes(search.toLowerCase())
     );
 
-    if (activeTab === "at-risk") {
-      result = result.filter(s => s.needsReview);
-    } else if (activeTab === "growth") {
-      result = result.filter(s => (s.mom_growth_rate || 0) > 15);
+    if (activeTab === "student") {
+      result = result.filter(s => s.institutional_status === "Student");
+    } else if (activeTab === "alumni") {
+      result = result.filter(s => s.institutional_status === "Alumni");
     }
 
     return result;
@@ -81,8 +81,8 @@ export default function StartupsPage() {
   const stats = useMemo(() => {
     return {
       total: startups.length,
-      atRisk: startups.filter(s => s.needsReview).length,
-      highGrowth: startups.filter(s => (s.mom_growth_rate || 0) > 20).length,
+      studentCount: startups.filter(s => s.institutional_status === "Student").length,
+      alumniCount: startups.filter(s => s.institutional_status === "Alumni").length,
       avgRunway: Math.round(startups.reduce((acc, s) => acc + (s.runway_months || 0), 0) / (startups.length || 1)),
     };
   }, [startups]);
@@ -109,8 +109,8 @@ export default function StartupsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
           { label: "Total Ventures", value: stats.total, icon: Building2, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "At Risk", value: stats.atRisk, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
-          { label: "High Growth", value: stats.highGrowth, icon: Rocket, color: "text-violet-600", bg: "bg-violet-50" },
+          { label: "Student Ventures", value: stats.studentCount, icon: Users, color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Alumni Ventures", value: stats.alumniCount, icon: ShieldCheck, color: "text-violet-600", bg: "bg-violet-50" },
           { label: "Avg. Runway", value: `${stats.avgRunway} Mo`, icon: Clock, color: "text-emerald-600", bg: "bg-emerald-50" },
         ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm bg-card overflow-hidden relative">
@@ -133,8 +133,8 @@ export default function StartupsPage() {
         <Tabs defaultValue="all" className="w-full md:w-auto" onValueChange={setActiveTab}>
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="all" className="px-6 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">All</TabsTrigger>
-            <TabsTrigger value="at-risk" className="px-6 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">At Risk</TabsTrigger>
-            <TabsTrigger value="growth" className="px-6 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">High Growth</TabsTrigger>
+            <TabsTrigger value="student" className="px-6 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">Students</TabsTrigger>
+            <TabsTrigger value="alumni" className="px-6 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">Alumni</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -172,7 +172,7 @@ export default function StartupsPage() {
                 <TableHead className="w-[300px] text-[10px] uppercase tracking-widest font-bold h-12">Startup & Founder</TableHead>
                 <TableHead className="text-[10px] uppercase tracking-widest font-bold h-12 text-center">Growth (MoM)</TableHead>
                 <TableHead className="text-[10px] uppercase tracking-widest font-bold h-12 text-center">Runway</TableHead>
-                <TableHead className="text-[10px] uppercase tracking-widest font-bold h-12">Stage</TableHead>
+                <TableHead className="text-[10px] uppercase tracking-widest font-bold h-12">Category</TableHead>
                 <TableHead className="text-[10px] uppercase tracking-widest font-bold h-12">Health Status</TableHead>
                 <TableHead className="w-[50px] h-12"></TableHead>
               </TableRow>
@@ -235,9 +235,9 @@ export default function StartupsPage() {
                   <TableCell>
                     <Badge
                       variant="outline"
-                      className={`text-[10px] font-bold uppercase tracking-tighter border-none px-3 py-0.5 rounded-full ${stageStyles[startup.stage] ?? "bg-muted text-muted-foreground"}`}
+                      className={`text-[10px] font-bold uppercase tracking-tighter border-none px-3 py-0.5 rounded-full ${categoryStyles[startup.current_stage || "Ideation"] ?? "bg-muted text-muted-foreground"}`}
                     >
-                      {startup.stage}
+                      {startup.current_stage || "Ideation"}
                     </Badge>
                   </TableCell>
 

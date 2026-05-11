@@ -224,7 +224,7 @@ export default function StartupDetailPage() {
       <div className="bg-white border-b border-gray-200 px-6 py-6 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="flex flex-col md:flex-row items-center gap-5 w-full md:w-auto">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/admin')} className="rounded-full hover:bg-gray-100 shrink-0 self-start md:self-center">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/startups')} className="rounded-full hover:bg-gray-100 shrink-0 self-start md:self-center">
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex flex-col md:flex-row items-center gap-5 w-full">

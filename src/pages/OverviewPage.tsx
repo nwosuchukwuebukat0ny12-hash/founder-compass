@@ -31,7 +31,7 @@ import { Tables } from "@/integrations/supabase/types";
 type Startup = Tables<"startups">;
 type Pulse = Tables<"pulses">;
 type Financial = Tables<"startup_financials">;
-type Segment = "all" | "innovators" | "smes" | "ideation";
+type Segment = "all" | "innovators" | "sme" | "ideation";
 type Timeframe = "daily" | "weekly" | "monthly";
 
 interface ScoredStartup extends Startup {
@@ -137,7 +137,11 @@ export default function OverviewPage() {
   // Filter by segment
   const startups = useMemo(() => {
     if (segment === "all") return allStartups;
-    return allStartups.filter(s => (s.current_stage || "").toLowerCase() === segment.toLowerCase());
+    return allStartups.filter(s => {
+      const stage = (s.current_stage || "").toLowerCase();
+      if (segment === "sme") return stage === "sme" || stage === "smes";
+      return stage === segment.toLowerCase();
+    });
   }, [allStartups, segment]);
 
   // Score every startup
@@ -169,7 +173,9 @@ export default function OverviewPage() {
       // If segment is not all, only include financials for startups in that segment
       if (segment === "all") return true;
       const s = allStartups.find(startup => startup.id === f.startup_id);
-      return (s?.current_stage || "").toLowerCase() === segment.toLowerCase();
+      const stage = (s?.current_stage || "").toLowerCase();
+      if (segment === "sme") return stage === "sme" || stage === "smes";
+      return stage === segment.toLowerCase();
     });
 
     const groups: Record<string, { label: string; revenue: number; expenses: number }> = {};
@@ -252,7 +258,7 @@ export default function OverviewPage() {
         <TabsList className="grid w-full max-w-md grid-cols-4 bg-muted/50 p-1 rounded-xl">
           <TabsTrigger value="all" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm text-xs gap-2 font-bold uppercase tracking-wider">All</TabsTrigger>
           <TabsTrigger value="innovators" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm text-xs gap-2 font-bold uppercase tracking-wider">Innovators</TabsTrigger>
-          <TabsTrigger value="smes" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm text-xs gap-2 font-bold uppercase tracking-wider">SMEs</TabsTrigger>
+          <TabsTrigger value="sme" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm text-xs gap-2 font-bold uppercase tracking-wider">SMEs</TabsTrigger>
           <TabsTrigger value="ideation" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm text-xs gap-2 font-bold uppercase tracking-wider">Ideation</TabsTrigger>
         </TabsList>
       </Tabs>
