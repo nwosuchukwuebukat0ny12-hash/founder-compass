@@ -67,6 +67,17 @@ const RoleRouter = () => {
   const hasStartup = !!profile?.startup_id;
 
   if (role === 'admin') {
+    if (!profile?.first_name) {
+      return (
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/onboarding" element={<FounderOnboardingPage />} />
+            <Route path="*" element={<Navigate to="/onboarding" replace />} />
+          </Routes>
+        </Suspense>
+      );
+    }
+
     return (
       <DashboardLayout>
         <Suspense fallback={<LoadingScreen />}>

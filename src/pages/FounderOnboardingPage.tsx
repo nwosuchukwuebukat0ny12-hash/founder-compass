@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,19 @@ export default function FounderOnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedCountryCode, setSelectedCountryCode] = useState("+234");
+
+  const { data: profile, isLoading: isProfileLoading } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  const isAdmin = profile?.role === 'admin';
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -112,7 +126,28 @@ export default function FounderOnboardingPage() {
     try {
       const fullPhoneNumber = `${selectedCountryCode} ${formData.phoneNumber}`;
       
-      // 1. Create the startup
+      if (isAdmin) {
+        // Admin Onboarding Flow: Just update the profile, no startup creation
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+            phone_number: fullPhoneNumber,
+            country: formData.country,
+            // role remains "admin"
+          } as any)
+          .eq("id", user.id);
+
+        if (profileError) throw profileError;
+
+        toast({ title: "Profile Ready!", description: "Welcome to Founder Pulse, " + formData.firstName });
+        window.location.href = "/";
+        return;
+      }
+
+      // Founder Onboarding Flow: Create startup and update profile
       const { data: startupData, error: startupError } = await supabase
         .from("startups")
         .insert({
@@ -132,7 +167,6 @@ export default function FounderOnboardingPage() {
 
       if (startupError) throw startupError;
 
-      // 2. Update the profile
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
@@ -169,13 +203,15 @@ export default function FounderOnboardingPage() {
           <Sparkles className="w-6 h-6 text-[#00D395]" />
         </div>
         <h1 className="text-2xl font-serif font-semibold text-[#1A1A1A]">
-          {formData.firstName ? `Welcome, ${formData.firstName}` : "Join the Lab"}
+          {formData.firstName ? `Welcome, ${formData.firstName}` : "Welcome! Let's get your profile set up."}
         </h1>
-        <div className="flex items-center justify-center gap-1">
-          {[1, 2, 3, 4].map(s => (
-            <div key={s} className={`h-1 rounded-full transition-all duration-300 ${step >= s ? 'w-6 bg-[#00D395]' : 'w-2 bg-gray-200'}`} />
-          ))}
-        </div>
+        {!isAdmin && (
+          <div className="flex items-center justify-center gap-1">
+            {[1, 2, 3, 4].map(s => (
+              <div key={s} className={`h-1 rounded-full transition-all duration-300 ${step >= s ? 'w-6 bg-[#00D395]' : 'w-2 bg-gray-200'}`} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="w-full max-w-lg">
@@ -224,9 +260,15 @@ export default function FounderOnboardingPage() {
               </div>
             </CardContent>
             <CardFooter className="bg-gray-50/50 p-6">
-              <Button onClick={nextStep} className="w-full bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.country}>
-                Next: Business Details <ChevronRight className="ml-2 w-4 h-4" />
-              </Button>
+              {isAdmin ? (
+                <Button onClick={handleSubmit} className="w-full bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={isSubmitting || !formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.country}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Complete Setup"}
+                </Button>
+              ) : (
+                <Button onClick={nextStep} className="w-full bg-[#00D395] hover:bg-[#00A389] text-white rounded-full h-12 font-bold" disabled={!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.country}>
+                  Next: Business Details <ChevronRight className="ml-2 w-4 h-4" />
+                </Button>
+              )}
             </CardFooter>
           </Card>
         )}
