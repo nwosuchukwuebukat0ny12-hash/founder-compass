@@ -225,30 +225,32 @@ export default function FounderFinancialsPage() {
       });
       return Object.values(weeks).reverse();
     }
-    // Monthly: last 12 months grouped
+    // Monthly: last 12 months grouped (Merging Pulse baseline + Transaction additions)
     const months: Record<string, { label: string; income: number; expenses: number }> = {};
+    
+    // 1. Baseline from Pulses (Reported Snapshots)
+    pulses.forEach((p) => {
+      const d = new Date(p.month);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      months[key] = {
+        label: d.toLocaleDateString("default", { month: "short", year: "numeric" }),
+        income: p.mrr || 0,
+        expenses: p.expenses || 0,
+      };
+    });
+
+    // 2. Add Transactions (Granular Ledger Items)
     transactions.forEach((tx) => {
       if (!tx.month) return;
       const d = new Date(tx.month);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       if (!months[key]) {
-        months[key] = { label: d.toLocaleDateString("default", { month: "short", year: "2-digit" }), income: 0, expenses: 0 };
+        months[key] = { label: d.toLocaleDateString("default", { month: "short", year: "numeric" }), income: 0, expenses: 0 };
       }
       months[key].income += tx.revenue || 0;
       months[key].expenses += tx.expenses || 0;
     });
-    // Fill from pulse data if no transactions exist
-    if (Object.keys(months).length === 0) {
-      pulses.slice().reverse().forEach((p) => {
-        const d = new Date(p.month);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        months[key] = {
-          label: d.toLocaleDateString("default", { month: "short", year: "2-digit" }),
-          income: p.mrr || 0,
-          expenses: p.expenses || 0,
-        };
-      });
-    }
+
     return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
   }, [transactions, pulses, timeframe]);
 

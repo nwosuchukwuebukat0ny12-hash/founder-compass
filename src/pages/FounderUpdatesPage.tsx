@@ -112,24 +112,33 @@ export default function FounderUpdatesPage() {
     mutationFn: async () => {
       if (!startup) throw new Error("Startup not loaded");
       
-      const currentMonthStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-      // Extract core financials if they exist in custom metrics
-      // 1. Insert the detailed pulse report
+      // 1. Calculate current month's total expenses from ledger
+      const currentMonthStr = new Date().toISOString().slice(0, 7);
+      const { data: monthFinancials } = await supabase
+        .from("startup_financials")
+        .select("expenses")
+        .eq("startup_id", startup.id)
+        .gte("month", `${currentMonthStr}-01`)
+        .lte("month", `${currentMonthStr}-31`);
+      
+      const totalMonthlyExpenses = (monthFinancials || []).reduce((sum, tx) => sum + (tx.expenses || 0), 0);
+
+      // 2. Insert the detailed pulse report
       const { error: pulseError } = await supabase.from("pulses").insert({
         startup_id: startup.id,
         founder_id: user?.id,
         month: currentMonthStr,
         mrr: parseFloat(formData.mrr) || 0,
-        expenses: parseFloat(formData.monthlyBurn) || 0,
+        expenses: totalMonthlyExpenses, // Automatically derived from ledger
         cash_in_bank: parseFloat(formData.cashInBank) || 0,
         custom_kpis: {},
         active_users: parseInt(formData.activeUsers) || 0,
         team_size: parseInt(formData.teamSize) || 0,
         fundraising_status: formData.fundraising,
-        spend_salaries: parseFloat(formData.spendSalaries) || 0,
-        spend_infra: parseFloat(formData.spendInfra) || 0,
-        spend_marketing: parseFloat(formData.spendMarketing) || 0,
-        spend_ops: parseFloat(formData.spendOps) || 0,
+        spend_salaries: 0, // No longer tracked here
+        spend_infra: 0,
+        spend_marketing: 0,
+        spend_ops: 0,
         new_users: parseInt(formData.newCustomers) || 0,
         lost_users: parseInt(formData.lostCustomers) || 0,
         target_mrr: parseFloat(formData.revenueTarget) || 0
@@ -137,10 +146,9 @@ export default function FounderUpdatesPage() {
 
       if (pulseError) throw pulseError;
 
-      // 2. Sync the latest metrics back to the 'startups' table for fast list-view access
-      const expenseValue = parseFloat(formData.monthlyBurn) || 0;
-      const runway = expenseValue > 0 
-        ? Math.round((parseFloat(formData.cashInBank) || 0) / expenseValue) 
+      // 3. Sync the latest metrics back to the 'startups' table for fast list-view access
+      const runway = totalMonthlyExpenses > 0 
+        ? Math.round((parseFloat(formData.cashInBank) || 0) / totalMonthlyExpenses) 
         : 99; // Infinity or high number
 
       const { error: startupError } = await supabase.from("startups").update({
@@ -270,21 +278,6 @@ export default function FounderUpdatesPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="monthlyBurn" className="text-gray-600 font-semibold">Monthly Expenses / Burn ({sym})</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                  <Input 
-                    id="monthlyBurn" 
-                    type="number" 
-                    placeholder="Total costs this month" 
-                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
-                    required
-                    value={formData.monthlyBurn}
-                    onChange={(e) => handleInputChange('monthlyBurn', e.target.value)}
-                  />
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="cashInBank" className="text-gray-600 font-semibold">Cash Balance / Cash in Bank ({sym})</Label>
@@ -343,79 +336,7 @@ export default function FounderUpdatesPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-50">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-600 font-bold uppercase tracking-tight">Spend Breakdown</Label>
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-[#00D395] font-bold text-xs hover:bg-[#00D395]/5"
-                    onClick={() => setShowBreakdown(!showBreakdown)}
-                  >
-                    {showBreakdown ? "Hide Details" : "Show Details (Optional)"}
-                  </Button>
-                </div>
-
-                {showBreakdown && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="spendSalaries" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[0]}</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
-                        <Input 
-                          id="spendSalaries" 
-                          type="number" 
-                          className="pl-6 bg-white border-gray-200 h-9 text-sm" 
-                          value={formData.spendSalaries}
-                          onChange={(e) => handleInputChange('spendSalaries', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="spendInfra" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[1]}</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
-                        <Input 
-                          id="spendInfra" 
-                          type="number" 
-                          className="pl-6 bg-white border-gray-200 h-9 text-sm" 
-                          value={formData.spendInfra}
-                          onChange={(e) => handleInputChange('spendInfra', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="spendMarketing" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[2]}</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
-                        <Input 
-                          id="spendMarketing" 
-                          type="number" 
-                          className="pl-6 bg-white border-gray-200 h-9 text-sm" 
-                          value={formData.spendMarketing}
-                          onChange={(e) => handleInputChange('spendMarketing', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="spendOps" className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">{spendLabels[3]}</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">{sym}</span>
-                        <Input 
-                          id="spendOps" 
-                          type="number" 
-                          className="pl-6 bg-white border-gray-200 h-9 text-sm" 
-                          value={formData.spendOps}
-                          onChange={(e) => handleInputChange('spendOps', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+               </div>
 
               <div className="space-y-2 pt-4 border-t border-gray-50">
                 <Label htmlFor="teamSize" className="text-gray-600 font-semibold">Team Size (Headcount)</Label>

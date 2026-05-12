@@ -38,9 +38,14 @@ export default function FounderPortalPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [burnTimeframe, setBurnTimeframe] = useState<BurnTimeframe>("monthly");
+  const [incomeTimeframe, setIncomeTimeframe] = useState<BurnTimeframe>("monthly");
 
-  const cycleTimeframe = () => {
+  const cycleBurnTimeframe = () => {
     setBurnTimeframe((prev) => prev === "monthly" ? "daily" : prev === "daily" ? "weekly" : "monthly");
+  };
+
+  const cycleIncomeTimeframe = () => {
+    setIncomeTimeframe((prev) => prev === "monthly" ? "daily" : prev === "daily" ? "weekly" : "monthly");
   };
 
 
@@ -113,6 +118,10 @@ export default function FounderPortalPage() {
 
   const currencySymbol = startup?.currency === 'NGN' ? '₦' : startup?.currency === 'GBP' ? '£' : startup?.currency === 'EUR' ? '€' : '$';
 
+  // Check if pulse is submitted for the current month
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const isPulseSubmitted = pulses.some(p => p.month === currentMonthStr);
+
   const isDemoMode = pulses.length === 0;
 
   // KPI Derivations from real pulse data
@@ -122,13 +131,34 @@ export default function FounderPortalPage() {
   const currentMrr = latestPulse?.mrr || 0;
   const prevMrr = previousPulse?.mrr || 0;
   const mrrGrowth = prevMrr > 0 ? ((currentMrr - prevMrr) / prevMrr) * 100 : 0;
-
   const targetMrr = latestPulse?.target_mrr || 0;
-
   const currentCash = latestPulse?.cash_in_bank || 0;
-  const currentBurn = latestPulse?.expenses || 0;
-  const runwayValue = currentBurn > 0 ? (currentCash / currentBurn) : 0;
-  const runwayMonthsStr = runwayValue.toFixed(1);
+
+  // Real-time financial calculations from transactions
+  const filterByTimeframe = (txs: { expenses?: number; revenue?: number; month: string }[], timeframe: BurnTimeframe) => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const weekMs = 7 * dayMs;
+    const monthMs = 30 * dayMs;
+    
+    return txs.filter(tx => {
+      const txDate = new Date(tx.month).getTime();
+      if (timeframe === "daily") return now - txDate <= dayMs;
+      if (timeframe === "weekly") return now - txDate <= weekMs;
+      return now - txDate <= monthMs;
+    });
+  };
+
+  const filteredBurnTxs = filterByTimeframe(financialTxs, burnTimeframe);
+  const calculatedBurn = filteredBurnTxs.reduce((sum, tx) => sum + (tx.expenses || 0), 0);
+  
+  const filteredIncomeTxs = filterByTimeframe(financialTxs, incomeTimeframe);
+  const currentIncome = filteredIncomeTxs.reduce((sum, tx) => sum + (tx.revenue || 0), 0);
+
+  // Runway calculation: Total Cash / Monthly Operating Expenses (from Pulse)
+  const monthlyExpensesForRunway = latestPulse?.expenses || 0;
+  const runwayValue = monthlyExpensesForRunway > 0 ? (currentCash / monthlyExpensesForRunway) : 0;
+  const runwayMonthsStr = runwayValue > 12 ? "12+" : runwayValue.toFixed(1);
 
   const totalActiveCustomers = latestPulse?.active_users || 0;
   const prevCustomers = previousPulse?.active_users || 0;
@@ -147,7 +177,7 @@ export default function FounderPortalPage() {
 
   // MRR vs Target chart data from pulse history
   const mrrChartData = pulses.map(p => {
-    const monthLabel = new Date(p.month + '-01').toLocaleString('default', { month: 'short' });
+    const monthLabel = new Date(p.month + '-01').toLocaleString('default', { month: 'short', year: 'numeric' });
     return {
       month: monthLabel,
       mrr: p.mrr || 0,
@@ -215,7 +245,7 @@ export default function FounderPortalPage() {
       <WelcomeBanner
         founderName={founderDisplay}
         startupName={startup.name}
-        pulseStatus="due"
+        pulseStatus={isPulseSubmitted ? "up-to-date" : "due"}
         onActionClick={() => navigate('/updates')}
       />
 
@@ -267,95 +297,81 @@ export default function FounderPortalPage() {
               </CardContent>
             </Card>
 
-            {/* KPI 3: Cash Balance */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
-              <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash Balance</p>
-                <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                  {currentCash > 0
-                    ? currentCash >= 1000000
-                      ? `${currencySymbol}${(currentCash / 1000000).toFixed(2)}M`
-                      : `${currencySymbol}${(currentCash / 1000).toFixed(1)}k`
-                    : '—'}
-                </h3>
-              </CardContent>
-            </Card>
-
-            {/* KPI 4: Burn (Interactive) */}
-            <Card
-              className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden cursor-pointer hover:border-[#FF4D4F]/40 hover:shadow-md transition-all group"
-              onClick={cycleTimeframe}
+            {/* KPI 3: Burn Toggle */}
+            <Card 
+              className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden cursor-pointer hover:border-red-100 transition-all group"
+              onClick={cycleBurnTimeframe}
             >
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Burn</p>
-                  <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                    <RefreshCw className="w-2.5 h-2.5 group-hover:rotate-180 transition-transform duration-500" />
-                    {burnTimeframe}
+                  <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Gross Burn</p>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                    <RefreshCw className="h-2.5 w-2.5 group-hover:rotate-180 transition-transform duration-500" /> {burnTimeframe}
                   </div>
                 </div>
                 <div className="flex items-end justify-between">
-                  {(() => {
-                    // Calculate burn from live transactions by timeframe
-                    const ms = burnTimeframe === "daily" ? 86400000 : burnTimeframe === "weekly" ? 604800000 : 2592000000;
-                    const filtered = financialTxs.filter(tx => tx.month && isWithinMs(tx.month, ms));
-                    const liveBurn = filtered.reduce((s, tx) => s + (tx.expenses || 0), 0);
-                    // Fallback to pulse data if no transactions
-                    const displayBurn = financialTxs.length > 0 ? liveBurn : currentBurn;
-                    return (
-                      <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                        {displayBurn > 0 ? `${currencySymbol}${displayBurn >= 1000 ? (displayBurn / 1000).toFixed(1) + 'k' : displayBurn.toFixed(0)}` : '—'}
-                      </h3>
-                    );
-                  })()}
+                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                    {calculatedBurn > 0 ? `${currencySymbol}${calculatedBurn >= 1000 ? (calculatedBurn / 1000).toFixed(1) + 'k' : calculatedBurn.toFixed(0)}` : '—'}
+                  </h3>
+                  <div className="p-2 rounded-lg bg-red-50 text-red-500">
+                    <TrendingDown className="h-4 w-4" />
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-4 pt-4 border-t border-gray-100 font-medium">
-                  Click to toggle Daily · Weekly · Monthly
-                </p>
+              </CardContent>
+            </Card>
+
+            {/* KPI 4: Income Toggle */}
+            <Card 
+              className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden cursor-pointer hover:border-[#635BFF]/30 transition-all group"
+              onClick={cycleIncomeTimeframe}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Total Income</p>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-[#635BFF] bg-[#635BFF]/5 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                    <RefreshCw className="h-2.5 w-2.5 group-hover:rotate-180 transition-transform duration-500" /> {incomeTimeframe}
+                  </div>
+                </div>
+                <div className="flex items-end justify-between">
+                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                    {currentIncome > 0 ? `${currencySymbol}${currentIncome >= 1000 ? (currentIncome / 1000).toFixed(1) + 'k' : currentIncome.toFixed(0)}` : '—'}
+                  </h3>
+                  <div className="p-2 rounded-lg bg-[#635BFF]/10 text-[#635BFF]">
+                    <ArrowUpRight className="h-4 w-4" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
             {/* KPI 5: Runway */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden relative">
               <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash Runway</p>
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Runway</p>
                 <div className="flex items-end justify-between">
-                  <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {runwayValue > 0 ? <>{runwayMonthsStr} <span className="text-lg text-gray-400 font-medium">mo</span></> : '—'}
-                  </h3>
-                  {runwayValue > 0 && (
-                    <Badge variant="outline" className={`border-none ${runwayValue >= 12 ? 'text-[#878A22] bg-[#878A22]/10' : 'text-[#FF4D4F] bg-[#FF4D4F]/10'} font-bold`}>
-                      {runwayValue >= 12 ? 'Healthy' : 'Low Runway'}
-                    </Badge>
-                  )}
-                </div>
-                {runwayValue > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <Progress value={(Math.min(runwayValue, 24) / 24) * 100} className="h-2 bg-gray-100 [&>div]:bg-[#00D395]" />
-                    <p className="text-[10px] text-gray-400 text-right font-bold uppercase tracking-widest">Target: &gt;18 mo</p>
+                  <div>
+                    <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
+                      {runwayMonthsStr} <span className="text-sm font-medium text-gray-400">Mo</span>
+                    </h3>
                   </div>
-                )}
+                  <div className={`p-2 rounded-lg ${runwayValue < 6 ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                    <Clock className="h-4 w-4" />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            {/* KPI 6: Total Active Customers */}
-            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+            {/* KPI 6: Cash Position */}
+            <Card className="bg-white border-gray-100 shadow-sm rounded-2xl overflow-hidden relative">
               <CardContent className="p-5">
-                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Total Active Customers</p>
+                <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash In Bank</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {totalActiveCustomers > 0 ? totalActiveCustomers.toLocaleString() : '—'}
+                    {currentCash > 0 ? `${currencySymbol}${currentCash >= 1000 ? (currentCash / 1000).toFixed(1) + 'k' : currentCash.toFixed(0)}` : '—'}
                   </h3>
-                  {customerGrowth !== 0 && (
-                    <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${customerGrowth >= 0 ? 'bg-[#00D395]/10 text-[#00D395]' : 'bg-[#FF4D4F]/10 text-[#FF4D4F]'}`}>
-                      {customerGrowth >= 0 ? <ArrowUpRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" /> : <ArrowDownRight className="h-3.5 w-3.5 mr-0.5 stroke-[3px]" />}
-                      {Math.abs(customerGrowth).toFixed(1)}%
-                    </div>
-                  )}
+                  <div className="p-2 rounded-lg bg-blue-50 text-blue-500">
+                    <Rocket className="h-4 w-4" />
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-4 pt-4 border-t border-gray-100 font-medium">
-                  {totalActiveCustomers > 0 ? "From your latest pulse data." : "No customer data logged yet."}
-                </p>
               </CardContent>
             </Card>
           </div>

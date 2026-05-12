@@ -25,8 +25,9 @@ const FounderUpdatesPage = lazy(() => import("./pages/FounderUpdatesPage"));
 const FounderEventsPage = lazy(() => import("./pages/FounderEventsPage"));
 const CustomMetricsPage = lazy(() => import("./pages/CustomMetricsPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
-const GradingSystemPage = lazy(() => import("./pages/GradingSystemPage"));
 const UpdatesHistoryPage = lazy(() => import("./pages/UpdatesHistoryPage"));
+const JudgingPage = lazy(() => import("./pages/JudgingPage"));
+const JudgePortalPage = lazy(() => import("./pages/JudgePortalPage"));
 
 const LoadingScreen = () => (
   <div className="flex h-screen w-full items-center justify-center">
@@ -75,7 +76,7 @@ const RoleRouter = () => {
             <Route path="/startups/:id" element={<StartupDetailPage />} />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/grading" element={<GradingSystemPage />} />
+            <Route path="/judging" element={<JudgingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -128,6 +129,11 @@ const App = () => (
             <Route path="/auth" element={
               <Suspense fallback={<LoadingScreen />}>
                 <AuthPage />
+              </Suspense>
+            } />
+            <Route path="/judge/:sessionId" element={
+              <Suspense fallback={<LoadingScreen />}>
+                <JudgePortalPage />
               </Suspense>
             } />
             <Route
