@@ -5,7 +5,7 @@ import {
   Rocket, TrendingUp, Users, AlertCircle, Loader2, ArrowUpRight,
   ArrowRight, ShieldAlert, CheckCircle2, Clock,
   Calendar, Building2, Cpu, Store, Ghost, Banknote, Briefcase,
-  ChevronRight, Activity, UserX, Send
+  ChevronRight, Activity, UserX, Send, RefreshCw
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -154,18 +154,39 @@ export default function OverviewPage() {
 
   // Aggregate KPIs
   const agg = useMemo(() => {
-    let totalRev = 0, totalBurn = 0, totalHead = 0, reporting = 0;
+    let totalRev = 0, totalHead = 0, reporting = 0;
+    
+    // Revenue and Headcount from Pulses (Manual MRR input)
     for (const s of scored) {
       if (s.latestPulse) {
         totalRev += s.latestPulse.mrr || 0;
-        totalBurn += s.latestPulse.expenses || 0;
         totalHead += s.latestPulse.team_size || 0;
         if (s.daysSinceUpdate <= 30) reporting++;
       }
     }
+
+    // Portfolio Burn from Financial Logs (Dynamic)
+    const latestFinancials = allFinancials.filter(f => {
+      // 1. Filter by segment (only startups currently in 'scored')
+      const isInSegment = scored.some(s => s.id === f.startup_id);
+      if (!isInSegment) return false;
+
+      // 2. Filter by timeframe
+      const date = new Date(f.month);
+      const now = new Date();
+      if (timeframe === "monthly") return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      if (timeframe === "weekly") {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return date >= weekAgo;
+      }
+      return date.toDateString() === now.toDateString();
+    });
+
+    const totalBurn = latestFinancials.reduce((sum, f) => sum + (f.expenses || 0), 0);
+
     const compliance = scored.length > 0 ? Math.round((reporting / scored.length) * 100) : 0;
     return { totalRev, totalBurn, totalHead, compliance, totalStartups: scored.length };
-  }, [scored]);
+  }, [scored, allFinancials, timeframe]);
 
   // Financial Chart Data (Aggregate)
   const financialChartData = useMemo(() => {
@@ -231,6 +252,11 @@ export default function OverviewPage() {
     return n.toString();
   };
 
+  const cycleTimeframe = () => {
+    const next: Record<Timeframe, Timeframe> = { daily: "weekly", weekly: "monthly", monthly: "daily" };
+    setTimeframe(next[timeframe]);
+  };
+
   if (loadingStartups) {
     return <div className="flex items-center justify-center min-h-[50vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -265,24 +291,39 @@ export default function OverviewPage() {
 
       {/* 5-Card KPI Strip */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
-        {[
+        { [
           { label: "Total Ventures", value: agg.totalStartups.toString(), icon: Rocket, trend: "Total active lab", color: "text-[#635BFF]", bg: "bg-[#635BFF]/10" },
-          { label: "Total Lab Revenue", value: fmtK(agg.totalRev), icon: Banknote, trend: "Combined MRR", color: "text-[#00D395]", bg: "bg-[#00D395]/10" },
-          { label: "Portfolio Burn", value: fmtK(agg.totalBurn), icon: Activity, trend: "Monthly expenses", color: "text-[#FF4D4F]", bg: "bg-[#FF4D4F]/10" },
+          { label: "Total Lab Revenue (Monthly)", value: fmtK(agg.totalRev), icon: Banknote, trend: "Combined MRR", color: "text-[#00D395]", bg: "bg-[#00D395]/10" },
+          { label: "Portfolio Burn", value: fmtK(agg.totalBurn), icon: Activity, trend: "Dynamic burn in period", color: "text-[#FF4D4F]", bg: "bg-[#FF4D4F]/10" },
           { label: "Jobs Created", value: agg.totalHead.toString(), icon: Users, trend: "Total headcount", color: "text-blue-600", bg: "bg-blue-50" },
           { label: "Reporting Rate", value: `${agg.compliance}%`, icon: CheckCircle2, trend: "Last 30 days", color: agg.compliance < 70 ? "text-amber-600" : "text-[#00D395]", bg: agg.compliance < 70 ? "bg-amber-50" : "bg-[#00D395]/10" },
-        ].map(kpi => (
-          <Card key={kpi.label} className="relative overflow-hidden border-none bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{kpi.label}</CardTitle>
-              <div className={`p-2 rounded-lg ${kpi.bg} ${kpi.color}`}><kpi.icon className="h-4 w-4" /></div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold font-heading text-gray-900">{kpi.value}</p>
-              <span className="text-[10px] font-bold text-gray-400">{kpi.trend}</span>
-            </CardContent>
-          </Card>
-        ))}
+        ].map(kpi => {
+          const isBurnCard = kpi.label === "Portfolio Burn";
+          return (
+            <Card 
+              key={kpi.label} 
+              className={`relative overflow-hidden border-none bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl transition-all ${isBurnCard ? 'cursor-pointer hover:ring-1 ring-[#FF4D4F]/30' : ''}`}
+              onClick={isBurnCard ? cycleTimeframe : undefined}
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="flex flex-col">
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{kpi.label}</CardTitle>
+                  {isBurnCard && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <RefreshCw className="w-2.5 h-2.5 text-[#FF4D4F] animate-spin-slow" />
+                      <span className="text-[9px] font-bold text-[#FF4D4F] uppercase tracking-tighter">{timeframe}</span>
+                    </div>
+                  )}
+                </div>
+                <div className={`p-2 rounded-lg ${kpi.bg} ${kpi.color}`}><kpi.icon className="h-4 w-4" /></div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold font-heading text-gray-900">{kpi.value}</p>
+                <span className="text-[10px] font-bold text-gray-400">{isBurnCard ? `Total logged ${timeframe} burn` : kpi.trend}</span>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
@@ -291,7 +332,7 @@ export default function OverviewPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-8">
             <div>
               <CardTitle className="text-lg font-bold flex items-center gap-2">
-                Aggregate Revenue vs. Burn
+                Aggregate Income vs. Burn
                 <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-tighter bg-gray-50 text-gray-400 border-none">Self-Reported</Badge>
               </CardTitle>
               <CardDescription className="text-xs font-medium">Combined financial trajectory across the selected segment.</CardDescription>

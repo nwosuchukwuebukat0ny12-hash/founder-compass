@@ -13,7 +13,7 @@ import {
   Building2, Users2, Briefcase, ExternalLink, ChevronRight,
   TrendingUp as TrendingUpIcon, DollarSign, PieChart as PieChartIcon, 
   Clock, Ghost, Search, Share2, Mail, Phone, MapPin, Twitter, 
-  Instagram, Github, Linkedin as LinkedinIcon, Link as LinkIcon, ArrowRight
+  Instagram, Github, Linkedin as LinkedinIcon, Link as LinkIcon, ArrowRight, RefreshCw
 } from "lucide-react";
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -41,6 +41,7 @@ export default function StartupDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
+  const [burnTimeframe, setBurnTimeframe] = useState<"daily" | "weekly" | "monthly">("monthly");
 
   // --- DATA FETCHING (Moved to top to prevent 'used before declaration' errors) ---
   const { data: startup, isLoading: loadingStartup } = useQuery({
@@ -111,6 +112,16 @@ export default function StartupDetailPage() {
     },
     enabled: !!id,
   });
+  
+  const { data: financials = [] } = useQuery({
+    queryKey: ["startup-financials", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("startup_financials").select("*").eq("startup_id", id!).order("month", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!id,
+  });
 
   const { data: documents = [] } = useQuery({
     queryKey: ["documents", id],
@@ -162,6 +173,11 @@ export default function StartupDetailPage() {
 
 
 
+  const cycleBurnTimeframe = () => {
+    const next: Record<string, "daily" | "weekly" | "monthly"> = { daily: "weekly", weekly: "monthly", monthly: "daily" };
+    setBurnTimeframe(next[burnTimeframe]);
+  };
+
   // --- ANALYTICS ENGINE ---
   const reportingRate = useMemo(() => {
     // Logic: Last 4 weeks. A week is reported if pulses or milestones were updated.
@@ -193,18 +209,60 @@ export default function StartupDetailPage() {
     const previous = pulses[pulses.length - 2] || null;
     const recentPulses = pulses.slice(-3);
     const avgBurn = recentPulses.reduce((sum, p) => sum + (p.expenses || 0), 0) / recentPulses.length;
-    const burnVelocity = previous ? ((current.expenses || 0) - (previous.expenses || 0)) / (previous.expenses || 1) : 0;
+    // Dynamic Burn Velocity from Financial Logs
+    const sortedFinancials = [...financials].sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+    const latestFin = sortedFinancials[sortedFinancials.length - 1];
+    const prevFin = sortedFinancials[sortedFinancials.length - 2];
+    
+    const burnVelocity = (latestFin && prevFin && prevFin.expenses > 0) 
+      ? (latestFin.expenses - prevFin.expenses) / prevFin.expenses 
+      : 0;
+
     const revenue = current.mrr || 0;
     const expenses = current.expenses || 0;
     const netMargin = revenue > 0 ? (revenue - expenses) / revenue : -1;
     const newRev = previous ? Math.max(0, (current.mrr || 0) - (previous.mrr || 0)) : 0;
     const efficiency = newRev > 0 ? (expenses - revenue) / newRev : 0;
     const cash = current.cash_in_bank || 0;
-    const netBurn = expenses - revenue;
-    const grossBurn = current.expenses || 0;
-    const runway = grossBurn > 0 ? cash / grossBurn : 0;
-    return { burnVelocity, netMargin, efficiency, runway, current, previous, netBurn };
-  }, [pulses]);
+    const netBurn = Math.max(0, expenses - revenue);
+    
+    // Dynamic Burn from Financial Logs (Grouped by Month)
+    const monthlyGroups: Record<string, number> = {};
+    financials.forEach(f => {
+      const monthKey = f.month.slice(0, 7); // YYYY-MM
+      monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (f.expenses || 0);
+    });
+
+    const now = new Date();
+    const currentMonthKey = now.toISOString().slice(0, 7);
+    const currentMonthBurn = monthlyGroups[currentMonthKey] || 0;
+
+    // Filtered Burn for the card (Daily/Weekly/Monthly)
+    const filteredFinancials = financials.filter(f => {
+      const d = new Date(f.month);
+      if (burnTimeframe === "monthly") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      if (burnTimeframe === "weekly") return d >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return d.toDateString() === now.toDateString();
+    });
+
+    const totalBurn = filteredFinancials.reduce((sum, f) => sum + (f.expenses || 0), 0);
+
+    // Dynamic Runway based on average monthly totals
+    const monthValues = Object.values(monthlyGroups).slice(-3); // Last 3 completed/current months
+    const avgMonthlyBurn = monthValues.length > 0 
+      ? monthValues.reduce((sum, val) => sum + val, 0) / monthValues.length
+      : current.expenses || 0;
+
+    const runway = avgMonthlyBurn > 0 ? cash / avgMonthlyBurn : 0;
+    
+    return { burnVelocity, netMargin, efficiency, runway, current, previous, netBurn, totalBurn };
+  }, [pulses, financials, burnTimeframe]);
+
+  const formatCurrency = (val: number) => {
+    if (val >= 1000000) return (val / 1000000).toFixed(1) + "M";
+    if (val >= 1000) return (val / 1000).toFixed(1) + "k";
+    return val.toLocaleString();
+  };
 
   const chartData = useMemo(() => pulses.map(p => ({
     month: new Date(p.month).toLocaleDateString('en-US', { month: 'short' }),
@@ -301,7 +359,7 @@ export default function StartupDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">
-                    {currencySymbol}{(insights?.current?.mrr || 0).toLocaleString()}
+                    {currencySymbol}{formatCurrency(insights?.current?.mrr || 0)}
                   </div>
                   <div className="text-[10px] font-bold text-emerald-500 flex items-center mt-1">
                     Current MRR
@@ -309,19 +367,27 @@ export default function StartupDetailPage() {
                 </CardContent>
               </Card>
               
-              <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden">
+              <Card 
+                className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-2xl overflow-hidden cursor-pointer hover:ring-1 ring-red-100 transition-all group"
+                onClick={cycleBurnTimeframe}
+              >
                 <CardHeader className="pb-2">
                   <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
-                    Monthly Burn
+                    <div className="flex flex-col gap-1">
+                      <span>Portfolio Burn</span>
+                      <div className="flex items-center gap-1 text-[9px] text-red-500 lowercase">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin-slow" /> {burnTimeframe}
+                      </div>
+                    </div>
                     <Flame className="w-3 h-3 text-red-500" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">
-                    {currencySymbol}{(insights?.current?.expenses || 0).toLocaleString()}
+                    {currencySymbol}{formatCurrency(insights?.totalBurn || 0)}
                   </div>
                   <div className="text-[10px] font-bold text-gray-400 flex items-center mt-1">
-                    {pulses.length > 0 ? <><ArrowUpRight className="w-3 h-3 mr-0.5 text-red-500" /> <span className="text-red-500">+12% MoM</span></> : 'No recent change'}
+                    Total logged {burnTimeframe} burn
                   </div>
                 </CardContent>
               </Card>
@@ -338,7 +404,7 @@ export default function StartupDetailPage() {
                     {`${insights?.runway?.toFixed(1) || '0.0'}mo`}
                   </div>
                   <div className="text-[10px] font-bold text-gray-400 flex items-center mt-1">
-                    {insights?.runway === 0 ? 'No active burn' : 'Based on current burn'}
+                    {insights?.runway === 0 ? 'No active burn' : 'Based on avg monthly burn'}
                   </div>
                 </CardContent>
               </Card>
@@ -573,8 +639,8 @@ export default function StartupDetailPage() {
                               <p className="text-[10px] text-gray-400">Monthly Update</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-bold text-emerald-600">+{currencySymbol}{(p.mrr || 0).toLocaleString()}</p>
-                              <p className="text-[10px] text-red-400">-{currencySymbol}{(p.expenses || 0).toLocaleString()}</p>
+                              <p className="text-sm font-bold text-emerald-600">+{currencySymbol}{formatCurrency(p.mrr || 0)}</p>
+                              <p className="text-[10px] text-red-400">-{currencySymbol}{formatCurrency(p.expenses || 0)}</p>
                             </div>
                           </div>
                         ))}
