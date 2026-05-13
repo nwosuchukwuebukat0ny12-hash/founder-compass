@@ -50,13 +50,37 @@ const FounderTeamPage = lazy(() => import("./pages/FounderTeamPage"));
 const RoleRouter = () => {
   const { user } = useAuth();
   
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, refetch } = useQuery({
     queryKey: ["profile", user?.id],
     queryFn: async () => {
       if (!user) return null;
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      if (error) throw error;
-      return data;
+      
+      // 1. Get current profile
+      const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (error && error.code !== 'PGRST116') throw error;
+
+      // 2. Check if user is whitelisted as an admin
+      const { data: whitelistEntry } = await supabase
+        .from("admin_whitelist" as any)
+        .select("email")
+        .ilike("email", user.email!)
+        .single();
+
+      // 3. If whitelisted but not an admin yet, upgrade them!
+      if (whitelistEntry && profile?.role !== 'admin') {
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ role: 'admin' })
+          .eq("id", user.id);
+        
+        if (!updateError) {
+          // Fetch updated profile
+          const { data: updated } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+          return updated;
+        }
+      }
+
+      return profile;
     },
     enabled: !!user,
   });
