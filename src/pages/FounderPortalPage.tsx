@@ -136,17 +136,23 @@ export default function FounderPortalPage() {
 
   // Real-time financial calculations from transactions
   const filterByTimeframe = (txs: { expenses?: number; revenue?: number; month: string }[], timeframe: BurnTimeframe) => {
-    const now = Date.now();
-    const dayMs = 24 * 60 * 60 * 1000;
-    const weekMs = 7 * dayMs;
-    const monthMs = 30 * dayMs;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).getTime();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     
     return txs.filter(tx => {
       const txDate = new Date(tx.month).getTime();
-      if (timeframe === "daily") return now - txDate <= dayMs;
-      if (timeframe === "weekly") return now - txDate <= weekMs;
-      return now - txDate <= monthMs;
+      if (timeframe === "daily") return txDate >= startOfToday;
+      if (timeframe === "weekly") return txDate >= startOfWeek;
+      return txDate >= startOfMonth;
     });
+  };
+
+  const formatCurrency = (val: number) => {
+    if (val >= 1000000) return (val / 1000000).toFixed(1) + "M";
+    if (val >= 1000) return (val / 1000).toFixed(1) + "k";
+    return val.toLocaleString();
   };
 
   const filteredBurnTxs = filterByTimeframe(financialTxs, burnTimeframe);
@@ -155,9 +161,26 @@ export default function FounderPortalPage() {
   const filteredIncomeTxs = filterByTimeframe(financialTxs, incomeTimeframe);
   const currentIncome = filteredIncomeTxs.reduce((sum, tx) => sum + (tx.revenue || 0), 0);
 
-  // Runway calculation: Total Cash / Monthly Operating Expenses (from Pulse)
-  const monthlyExpensesForRunway = latestPulse?.expenses || 0;
-  const runwayValue = monthlyExpensesForRunway > 0 ? (currentCash / monthlyExpensesForRunway) : 0;
+  // Dynamic Runway calculation: Total Cash / 3-Month Average Burn from Logs
+  const avgMonthlyBurn = useMemo(() => {
+    // 1. Group transactions by month (YYYY-MM) and sum expenses
+    const monthlyGroups: Record<string, number> = {};
+    financialTxs.forEach(tx => {
+      const monthKey = tx.month.slice(0, 7);
+      monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (tx.expenses || 0);
+    });
+
+    // 2. Take the most recent 3 months
+    const monthValues = Object.values(monthlyGroups).slice(0, 3);
+    
+    // 3. Average them (or use latest pulse if no logs)
+    if (monthValues.length > 0) {
+      return monthValues.reduce((sum, val) => sum + val, 0) / monthValues.length;
+    }
+    return latestPulse?.expenses || 0;
+  }, [financialTxs, latestPulse]);
+
+  const runwayValue = avgMonthlyBurn > 0 ? (currentCash / avgMonthlyBurn) : 0;
   const runwayMonthsStr = runwayValue > 12 ? "12+" : runwayValue.toFixed(1);
 
   const totalActiveCustomers = latestPulse?.active_users || 0;
@@ -262,7 +285,7 @@ export default function FounderPortalPage() {
                 <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Monthly Recurring Rev</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {currentMrr > 0 ? `${currencySymbol}${(currentMrr / 1000).toFixed(1)}k` : '—'}
+                    {currentMrr > 0 ? `${currencySymbol}${formatCurrency(currentMrr)}` : '—'}
                   </h3>
                   {mrrGrowth !== 0 && (
                     <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${mrrGrowth >= 0 ? 'bg-[#00D395]/10 text-[#00D395]' : 'bg-[#FF4D4F]/10 text-[#FF4D4F]'}`}>
@@ -283,7 +306,7 @@ export default function FounderPortalPage() {
                 <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Revenue Target</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {targetMrr > 0 ? `${currencySymbol}${(targetMrr / 1000).toFixed(1)}k` : '—'}
+                    {targetMrr > 0 ? `${currencySymbol}${formatCurrency(targetMrr)}` : '—'}
                   </h3>
                 </div>
                 {targetMrr > 0 && currentMrr > 0 && (
@@ -311,7 +334,7 @@ export default function FounderPortalPage() {
                 </div>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {calculatedBurn > 0 ? `${currencySymbol}${calculatedBurn >= 1000 ? (calculatedBurn / 1000).toFixed(1) + 'k' : calculatedBurn.toFixed(0)}` : '—'}
+                    {calculatedBurn > 0 ? `${currencySymbol}${formatCurrency(calculatedBurn)}` : '—'}
                   </h3>
                   <div className="p-2 rounded-lg bg-red-50 text-red-500">
                     <TrendingDown className="h-4 w-4" />
@@ -334,7 +357,7 @@ export default function FounderPortalPage() {
                 </div>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {currentIncome > 0 ? `${currencySymbol}${currentIncome >= 1000 ? (currentIncome / 1000).toFixed(1) + 'k' : currentIncome.toFixed(0)}` : '—'}
+                    {currentIncome > 0 ? `${currencySymbol}${formatCurrency(currentIncome)}` : '—'}
                   </h3>
                   <div className="p-2 rounded-lg bg-[#635BFF]/10 text-[#635BFF]">
                     <ArrowUpRight className="h-4 w-4" />
@@ -366,7 +389,7 @@ export default function FounderPortalPage() {
                 <p className="text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1">Cash In Bank</p>
                 <div className="flex items-end justify-between">
                   <h3 className="text-3xl font-bold text-[#1A1A1A] tabular-nums tracking-tight">
-                    {currentCash > 0 ? `${currencySymbol}${currentCash >= 1000 ? (currentCash / 1000).toFixed(1) + 'k' : currentCash.toFixed(0)}` : '—'}
+                    {currentCash > 0 ? `${currencySymbol}${formatCurrency(currentCash)}` : '—'}
                   </h3>
                   <div className="p-2 rounded-lg bg-blue-50 text-blue-500">
                     <Rocket className="h-4 w-4" />
@@ -391,7 +414,7 @@ export default function FounderPortalPage() {
                       <BarChart data={mrrChartData} margin={{ top: 20, right: 20, left: 40, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                         <XAxis dataKey="month" stroke="#999" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} dy={10} />
-                        <YAxis stroke="#999" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${val / 1000}k`} dx={-10} />
+                        <YAxis stroke="#999" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${currencySymbol}${formatCurrency(val)}`} dx={-10} />
                         <Tooltip
                           contentStyle={{ backgroundColor: '#fff', borderColor: '#eee', color: '#1A1A1A', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                           itemStyle={{ color: '#1A1A1A', fontWeight: 600 }}

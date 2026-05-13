@@ -49,21 +49,89 @@ export default function StartupsPage() {
   const [activeTab, setActiveTab] = useState("all");
   const navigate = useNavigate();
 
-  const { data: startups = [], isLoading } = useQuery({
+  const { data: startups = [], isLoading: loadingStartups } = useQuery({
     queryKey: ["startups"],
     queryFn: async () => {
       const { data, error } = await supabase.from("startups").select("*");
       if (error) throw error;
-      return (data ?? []).map((row) => ({
-        ...row,
-        stage: classifyStage(row.current_stage),
-        needsReview: row.is_delayed || (row.runway_months !== null && row.runway_months < 6),
-      }));
+      return data ?? [];
     },
   });
 
+  const { data: allFinancials = [] } = useQuery({
+    queryKey: ["all-financials"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("startup_financials").select("*").order("month", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: allPulses = [] } = useQuery({
+    queryKey: ["all-pulses"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("pulses").select("*").order("month", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const isLoading = loadingStartups;
+
+  // --- DYNAMIC INTELLIGENCE ENGINE ---
+  const enrichedStartups = useMemo(() => {
+    return startups.map(s => {
+      const pulses = allPulses.filter(p => p.startup_id === s.id);
+      const financials = allFinancials.filter(f => f.startup_id === s.id);
+      
+      const currentPulse = pulses[0] || null;
+      const prevPulse = pulses[1] || null;
+      
+      // Growth (MoM)
+      const growth = (currentPulse && prevPulse && prevPulse.mrr > 0)
+        ? ((currentPulse.mrr - prevPulse.mrr) / prevPulse.mrr) * 100
+        : 0;
+
+      // Runway (Cash / 3-Month Avg Monthly Burn)
+      const cash = currentPulse?.cash_in_bank || 0;
+      
+      const monthlyGroups: Record<string, number> = {};
+      financials.forEach(f => {
+        const monthKey = f.month.slice(0, 7);
+        monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (f.expenses || 0);
+      });
+
+      const monthValues = Object.values(monthlyGroups).slice(-3);
+      const avgMonthlyBurn = monthValues.length > 0
+        ? monthValues.reduce((sum, val) => sum + val, 0) / monthValues.length
+        : currentPulse?.expenses || 0;
+      
+      const runway = avgMonthlyBurn > 0 ? cash / avgMonthlyBurn : 0;
+
+      // Health Status
+      let health: "Stable" | "Growing" | "At Risk" = "Stable";
+      if (runway < 3) health = "At Risk";
+      else if (growth > 15) health = "Growing";
+
+      return {
+        ...s,
+        dynamicRunway: runway,
+        dynamicGrowth: growth,
+        health,
+        stage: classifyStage(s.current_stage),
+        needsReview: s.is_delayed || runway < 6
+      };
+    });
+  }, [startups, allFinancials, allPulses]);
+
+  const formatCurrency = (val: number) => {
+    if (val >= 1000000) return (val / 1000000).toFixed(1) + "M";
+    if (val >= 1000) return (val / 1000).toFixed(1) + "k";
+    return val.toLocaleString();
+  };
+
   const filtered = useMemo(() => {
-    let result = startups.filter(
+    let result = enrichedStartups.filter(
       (s) =>
         s.name.toLowerCase().includes(search.toLowerCase()) ||
         s.founder_name.toLowerCase().includes(search.toLowerCase())
@@ -80,12 +148,12 @@ export default function StartupsPage() {
 
   const stats = useMemo(() => {
     return {
-      total: startups.length,
-      studentCount: startups.filter(s => s.institutional_status === "Student").length,
-      alumniCount: startups.filter(s => s.institutional_status === "Alumni").length,
-      avgRunway: Math.round(startups.reduce((acc, s) => acc + (s.runway_months || 0), 0) / (startups.length || 1)),
+      total: enrichedStartups.length,
+      studentCount: enrichedStartups.filter(s => s.institutional_status === "Student").length,
+      alumniCount: enrichedStartups.filter(s => s.institutional_status === "Alumni").length,
+      avgRunway: Math.round(enrichedStartups.reduce((acc, s) => acc + (s.dynamicRunway || 0), 0) / (enrichedStartups.length || 1)),
     };
-  }, [startups]);
+  }, [enrichedStartups]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-10">
@@ -206,10 +274,10 @@ export default function StartupsPage() {
                   <TableCell className="text-center">
                     <div className="flex flex-col items-center">
                       <div className={`flex items-center gap-1 font-bold tabular-nums text-sm ${
-                        (startup.mom_growth_rate || 0) >= 0 ? "text-emerald-600" : "text-red-600"
+                        (startup.dynamicGrowth || 0) >= 0 ? "text-emerald-600" : "text-red-600"
                       }`}>
-                        {(startup.mom_growth_rate || 0) >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                        {Math.abs(startup.mom_growth_rate || 0)}%
+                        {(startup.dynamicGrowth || 0) >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                        {Math.abs(startup.dynamicGrowth || 0).toFixed(1)}%
                       </div>
                     </div>
                   </TableCell>
@@ -217,16 +285,16 @@ export default function StartupsPage() {
                   <TableCell className="text-center">
                     <div className="flex flex-col items-center gap-1">
                        <span className={`text-sm font-bold tabular-nums ${
-                         (startup.runway_months || 0) < 6 ? "text-red-600" : "text-foreground"
+                         (startup.dynamicRunway || 0) < 6 ? "text-red-600" : "text-foreground"
                        }`}>
-                          {startup.runway_months || 0} Mo
+                          {(startup.dynamicRunway || 0).toFixed(1)} Mo
                        </span>
                        <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
                           <div 
                             className={`h-full rounded-full ${
-                              (startup.runway_months || 0) < 6 ? "bg-red-500" : "bg-emerald-500"
+                              (startup.dynamicRunway || 0) < 3 ? "bg-red-500" : (startup.dynamicRunway || 0) < 6 ? "bg-amber-500" : "bg-emerald-500"
                             }`} 
-                            style={{ width: `${Math.min(100, (startup.runway_months || 0) * 10)}%` }}
+                            style={{ width: `${Math.min(100, (startup.dynamicRunway || 0) * 10)}%` }}
                           />
                        </div>
                     </div>
