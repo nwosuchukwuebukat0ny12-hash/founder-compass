@@ -68,12 +68,17 @@ const RoleRouter = () => {
 
       // 3. If whitelisted but not an admin yet, upgrade them!
       if (whitelistEntry && profile?.role !== 'admin') {
-        const { error: updateError } = await supabase
+        const { error: upsertError } = await supabase
           .from("profiles")
-          .update({ role: 'admin' })
-          .eq("id", user.id);
+          .upsert({ 
+            id: user.id, 
+            email: user.email, 
+            full_name: user.user_metadata?.full_name || 'Admin User',
+            role: 'admin',
+            updated_at: new Date().toISOString()
+          });
         
-        if (!updateError) {
+        if (!upsertError) {
           // Fetch updated profile
           const { data: updated } = await supabase.from("profiles").select("*").eq("id", user.id).single();
           return updated;
