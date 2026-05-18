@@ -255,7 +255,7 @@ export default function JudgingPage() {
             return `<td style="text-align: center; font-weight: 500;">${displayVal}</td>`;
           }).join('')}
           <td style="font-weight: 900; color: #635BFF; text-align: center; font-size: 15px;">${overallDisplay}</td>
-          <td style="width: 260px; height: 50px; border-bottom: 1px solid #eee;"></td>
+          <td style="width: 320px; height: 150px; border-bottom: 1px solid #eee; vertical-align: top; padding-top: 10px;"></td>
         </tr>
       `;
     }).join('');
