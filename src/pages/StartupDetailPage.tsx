@@ -13,7 +13,8 @@ import {
   Building2, Users2, Briefcase, ExternalLink, ChevronRight,
   TrendingUp as TrendingUpIcon, DollarSign, PieChart as PieChartIcon, 
   Clock, Ghost, Search, Share2, Mail, Phone, MapPin, Twitter, 
-  Instagram, Github, Linkedin as LinkedinIcon, Link as LinkIcon, ArrowRight, RefreshCw
+  Instagram, Github, Linkedin as LinkedinIcon, Link as LinkIcon, ArrowRight, RefreshCw,
+  Trophy, AlertTriangle, HelpCircle, Banknote, Flag, Star, Eye, Send
 } from "lucide-react";
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -23,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -32,6 +34,16 @@ import { toast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tables } from "@/integrations/supabase/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 
 
@@ -42,6 +54,16 @@ export default function StartupDetailPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
   const [burnTimeframe, setBurnTimeframe] = useState<"daily" | "weekly" | "monthly">("monthly");
+  // Assessment dialog state
+  const [isAssessmentOpen, setIsAssessmentOpen] = useState(false);
+  const [assessmentTarget, setAssessmentTarget] = useState<any>(null);
+  const [assessmentRating, setAssessmentRating] = useState<"On Track" | "Needs Attention" | "Critical Risk">("On Track");
+  const [assessmentText, setAssessmentText] = useState("");
+  // Milestone review dialog state
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<any>(null);
+  const [reviewProgress, setReviewProgress] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("");
 
   // --- DATA FETCHING (Moved to top to prevent 'used before declaration' errors) ---
   const { data: startup, isLoading: loadingStartup } = useQuery({
@@ -114,9 +136,13 @@ export default function StartupDetailPage() {
   });
   
   const { data: financials = [] } = useQuery({
-    queryKey: ["startup-financials", id],
+    queryKey: ["startup-financials-transactions", id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("startup_financials").select("*").eq("startup_id", id!).order("month", { ascending: true });
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id, amount, type, date")
+        .eq("startup_id", id!)
+        .order("date", { ascending: true });
       if (error) throw error;
       return data || [];
     },
@@ -138,7 +164,7 @@ export default function StartupDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("notes")
-        .select(`*`)
+        .select(`id, content, created_at, is_private, startup_id, author_id, profiles:author_id(full_name)`)
         .eq("startup_id", id!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -168,6 +194,135 @@ export default function StartupDetailPage() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   });
+
+  // Update milestone (admin review)
+  const updateMilestone = useMutation({
+    mutationFn: async ({ milestoneId, updates }: { milestoneId: string; updates: { status?: string; current_value?: number; progress?: number } }) => {
+      const { error } = await supabase.from("milestones").update(updates).eq("id", milestoneId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["milestones", id] });
+      setIsReviewOpen(false);
+      setReviewTarget(null);
+      toast({ title: "Target updated", description: "Milestone status has been synced." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  // Save advisor assessment as a structured note
+  const addAssessment = useMutation({
+    mutationFn: async () => {
+      if (!assessmentText.trim()) throw new Error("Please write an assessment note.");
+      const targetLabel = assessmentTarget ? ` [Target: ${assessmentTarget.title}]` : "";
+      const content = `🎯 [Target Assessment] [${assessmentRating}]${targetLabel}\n\n${assessmentText.trim()}`;
+      const { error } = await supabase.from("notes").insert({
+        content,
+        startup_id: id!,
+        author_id: user?.id,
+        is_private: false
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setIsAssessmentOpen(false);
+      setAssessmentText("");
+      setAssessmentRating("On Track");
+      setAssessmentTarget(null);
+      refetchNotes();
+      toast({ title: "Assessment logged", description: "Advisory assessment saved to the timeline." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  // Custom Nudge states
+  const [isNudgeOpen, setIsNudgeOpen] = useState(false);
+  const [nudgeMessage, setNudgeMessage] = useState("");
+  const [nudgeType, setNudgeType] = useState<"warning" | "error" | "info">("warning");
+
+  const sendNudge = useMutation({
+    mutationFn: async ({ message, type }: { message: string; type: "warning" | "error" | "info" }) => {
+      let targetUserId = startup?.founder_id;
+      if (!targetUserId) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("startup_id", id!)
+          .limit(1);
+        if (profiles && profiles.length > 0) {
+          targetUserId = profiles[0].id;
+        }
+      }
+
+      const titleEmoji = type === "error" ? "🚨 Lab Urgent Alert" : type === "warning" ? "⚠️ Lab Warning Alert" : "ℹ️ Lab Info Alert";
+
+      if (targetUserId) {
+        const { error } = await supabase.from("notifications").insert({
+          user_id: targetUserId,
+          title: titleEmoji,
+          message: message.trim(),
+          type: type === "error" ? "error" : type === "warning" ? "warning" : "info",
+        });
+        if (error) throw error;
+        return { isDemo: false };
+      } else {
+        const { error } = await supabase.from("notes").insert({
+          content: `🎯 [System Log] Sent accountability nudge to founder ${startup?.founder_name || "David Chen"}.\n\n[Severity: ${type.toUpperCase()}]\nMessage: "${message.trim()}"`,
+          startup_id: id!,
+          author_id: user?.id,
+          is_private: false
+        });
+        if (error) throw error;
+        return { isDemo: true };
+      }
+    },
+    onSuccess: (data) => {
+      refetchNotes();
+      setIsNudgeOpen(false);
+      if (data.isDemo) {
+        toast({
+          title: "Message Sent! ⚡ (Demo Mode)",
+          description: `Simulated alert sent to founder ${startup?.founder_name || "David Chen"} with your message.`,
+        });
+      } else {
+        toast({
+          title: "Message Sent! ⚡",
+          description: `Alerted founder with your message.`,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to send message",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  const openReviewDialog = (target: any) => {
+    setReviewTarget(target);
+    setReviewProgress(String(target.current_value || 0));
+    setReviewStatus(target.status || "Active");
+    setIsReviewOpen(true);
+  };
+
+  const handleReviewSave = () => {
+    if (!reviewTarget) return;
+    const val = parseFloat(reviewProgress);
+    const updates: { status?: string; current_value?: number; progress?: number } = { status: reviewStatus };
+    if (!isNaN(val)) {
+      updates.current_value = val;
+      if (reviewTarget.target_value && reviewTarget.target_value > 0) {
+        updates.progress = Math.min(Math.round((val / reviewTarget.target_value) * 100), 100);
+      }
+    }
+    updateMilestone.mutate({ milestoneId: reviewTarget.id, updates });
+  };
 
 
 
@@ -207,55 +362,69 @@ export default function StartupDetailPage() {
     if (pulses.length < 1) return null;
     const current = pulses[pulses.length - 1];
     const previous = pulses[pulses.length - 2] || null;
-    const recentPulses = pulses.slice(-3);
-    const avgBurn = recentPulses.reduce((sum, p) => sum + (p.expenses || 0), 0) / recentPulses.length;
-    // Dynamic Burn Velocity from Financial Logs
-    const sortedFinancials = [...financials].sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-    const latestFin = sortedFinancials[sortedFinancials.length - 1];
-    const prevFin = sortedFinancials[sortedFinancials.length - 2];
     
-    const burnVelocity = (latestFin && prevFin && prevFin.expenses > 0) 
-      ? (latestFin.expenses - prevFin.expenses) / prevFin.expenses 
-      : 0;
-
-    const revenue = current.mrr || 0;
-    const expenses = current.expenses || 0;
-    const netMargin = revenue > 0 ? (revenue - expenses) / revenue : -1;
-    const newRev = previous ? Math.max(0, (current.mrr || 0) - (previous.mrr || 0)) : 0;
-    const efficiency = newRev > 0 ? (expenses - revenue) / newRev : 0;
-    const cash = current.cash_in_bank || 0;
-    const netBurn = Math.max(0, expenses - revenue);
-    
-    // Dynamic Burn from Financial Logs (Grouped by Month)
+    // Dynamic Burn from Transactions (Grouped by Month)
     const monthlyGroups: Record<string, number> = {};
-    financials.forEach(f => {
-      const monthKey = f.month.slice(0, 7); // YYYY-MM
-      monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (f.expenses || 0);
+    financials.forEach(tx => {
+      if (!tx.date) return;
+      const monthKey = tx.date.slice(0, 7);
+      if (tx.type === 'expense') {
+        monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (tx.amount || 0);
+      }
     });
 
-    const now = new Date();
-    const currentMonthKey = now.toISOString().slice(0, 7);
-    const currentMonthBurn = monthlyGroups[currentMonthKey] || 0;
-
-    // Filtered Burn for the card (Daily/Weekly/Monthly)
-    const filteredFinancials = financials.filter(f => {
-      const d = new Date(f.month);
-      if (burnTimeframe === "monthly") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      if (burnTimeframe === "weekly") return d >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return d.toDateString() === now.toDateString();
-    });
-
-    const totalBurn = filteredFinancials.reduce((sum, f) => sum + (f.expenses || 0), 0);
-
-    // Dynamic Runway based on average monthly totals
-    const monthValues = Object.values(monthlyGroups).slice(-3); // Last 3 completed/current months
+    const monthValues = Object.values(monthlyGroups).slice(-3);
     const avgMonthlyBurn = monthValues.length > 0 
       ? monthValues.reduce((sum, val) => sum + val, 0) / monthValues.length
       : current.expenses || 0;
 
+    // Burn Velocity (MoM change in avg monthly burn)
+    const sortedMonths = Object.keys(monthlyGroups).sort();
+    const latestMonthBurn = monthlyGroups[sortedMonths[sortedMonths.length - 1]] || 0;
+    const prevMonthBurn = monthlyGroups[sortedMonths[sortedMonths.length - 2]] || 0;
+    const burnVelocity = prevMonthBurn > 0 ? (latestMonthBurn - prevMonthBurn) / prevMonthBurn : 0;
+
+    const revenue = current.mrr || 0;
+    const expenses = latestMonthBurn || current.expenses || 0;
+    const netMargin = revenue > 0 ? (revenue - expenses) / revenue : -1;
+    const newRev = previous ? Math.max(0, (current.mrr || 0) - (previous.mrr || 0)) : 0;
+    const efficiency = newRev > 0 ? (expenses - revenue) / newRev : 0;
+    
+    // Adjusted Live Cash = Pulse Cash + All Transactions since that Pulse
+    const pulseDate = new Date(current.month + '-01');
+    const relevantTxs = financials.filter(tx => tx.date && new Date(tx.date) >= pulseDate);
+    
+    let incomeDelta = 0;
+    let expenseDelta = 0;
+    relevantTxs.forEach(tx => {
+      if (tx.type === 'income') incomeDelta += (tx.amount || 0);
+      if (tx.type === 'expense') expenseDelta += (tx.amount || 0);
+    });
+    
+    const pulseCash = current.cash_in_bank || 0;
+    const cash = pulseCash + incomeDelta - expenseDelta;
+    const netBurn = Math.max(0, expenses - revenue);
+    
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    let burnThresholdTime = startOfToday;
+    if (burnTimeframe === "weekly") {
+      burnThresholdTime = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    } else if (burnTimeframe === "monthly") {
+      burnThresholdTime = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    }
+
+    const totalBurn = financials
+      .filter(tx => tx.type === 'expense' && tx.date && new Date(tx.date).getTime() >= burnThresholdTime)
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
     const runway = avgMonthlyBurn > 0 ? cash / avgMonthlyBurn : 0;
     
-    return { burnVelocity, netMargin, efficiency, runway, current, previous, netBurn, totalBurn };
+    return { 
+      burnVelocity, netMargin, efficiency, runway, current, previous, netBurn, totalBurn,
+      pulseCash, incomeDelta, expenseDelta, cash
+    };
   }, [pulses, financials, burnTimeframe]);
 
   const formatCurrency = (val: number) => {
@@ -264,12 +433,52 @@ export default function StartupDetailPage() {
     return val.toLocaleString();
   };
 
-  const chartData = useMemo(() => pulses.map(p => ({
-    month: new Date(p.month).toLocaleDateString('en-US', { month: 'short' }),
-    mrr: p.mrr || 0,
-    expenses: p.expenses || 0,
-    target: p.target_mrr || 0
-  })), [pulses]);
+  const chartData = useMemo(() => {
+    const now = new Date();
+    
+    const formatLocalYearMonth = (date: Date) => {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      return `${yyyy}-${mm}`;
+    };
+
+    const currentMonthKey = formatLocalYearMonth(now);
+    
+    // 1. Get unique months from last 6 months
+    const months: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(formatLocalYearMonth(d));
+    }
+
+    return months.map(m => {
+      const pulse = pulses.find(p => p.month === m);
+      const isCurrentMonth = m === currentMonthKey;
+      
+      let expenses = pulse?.expenses || 0;
+      let revenue = pulse?.mrr || 0;
+
+      if (isCurrentMonth) {
+        // Use live transactions for current month burn
+        expenses = financials
+          .filter(tx => tx.date && tx.date.startsWith(m) && tx.type === 'expense')
+          .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+        
+        // If no pulse yet for this month, use the latest known MRR
+        if (!pulse && pulses.length > 0) {
+          revenue = pulses[pulses.length - 1].mrr || 0;
+        }
+      }
+
+      return {
+        month: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short' }),
+        mrr: revenue,
+        expenses: expenses,
+        target: pulse?.target_mrr || 0,
+        isLive: isCurrentMonth
+      };
+    });
+  }, [pulses, financials]);
 
   const isMockMode = false;
 
@@ -311,8 +520,16 @@ export default function StartupDetailPage() {
               <Button variant="outline" className="rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 gap-2">
                 <Share2 className="w-4 h-4" /> Share
               </Button>
-              <Button className="rounded-xl bg-[#635BFF] hover:bg-[#5249cf] text-white gap-2 shadow-sm">
-                <MessageSquare className="w-4 h-4" /> Send Nudge
+              <Button 
+                onClick={() => {
+                  setNudgeMessage(`Hi ${startup?.founder_name || "there"}! The Collective Lab team has reviewed your target board for ${startup?.name}. Please ensure all active milestones, operational focus checklists, and pulse updates are completely up-to-date.`);
+                  setNudgeType("warning");
+                  setIsNudgeOpen(true);
+                }}
+                className="rounded-xl bg-[#635BFF] hover:bg-[#5249cf] text-white gap-2 shadow-sm min-w-[120px] justify-center"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Send Message
               </Button>
             </div>
           </div>
@@ -568,8 +785,54 @@ export default function StartupDetailPage() {
 
 
           {/* 3. FINANCIALS */}
-          <TabsContent value="financials" className="mt-0 space-y-6">
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+          <TabsContent value="financials" className="mt-0 space-y-8">
+            {/* Reconciliation Bridge */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="bg-white border-none shadow-sm rounded-2xl overflow-hidden group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-gray-400 opacity-20" />
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pulse Baseline</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xl font-bold text-gray-900">{currencySymbol}{formatCurrency(insights?.pulseCash || 0)}</p>
+                  <p className="text-[10px] text-gray-400 font-medium">As of {insights?.current?.month}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border-none shadow-sm rounded-2xl overflow-hidden group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-emerald-400 opacity-40" />
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Ledger Income</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xl font-bold text-emerald-600">+{currencySymbol}{formatCurrency(insights?.incomeDelta || 0)}</p>
+                  <p className="text-[10px] text-gray-400 font-medium">Since last pulse</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border-none shadow-sm rounded-2xl overflow-hidden group">
+                <div className="absolute left-0 top-0 w-1 h-full bg-red-400 opacity-40" />
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Ledger Expenses</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xl font-bold text-red-600">-{currencySymbol}{formatCurrency(insights?.expenseDelta || 0)}</p>
+                  <p className="text-[10px] text-gray-400 font-medium">Since last pulse</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#1A1A1A] border-none shadow-lg rounded-2xl overflow-hidden relative">
+                <div className="absolute right-0 bottom-0 p-2 opacity-5"><Banknote className="w-12 h-12 text-white" /></div>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Adjusted Live Cash</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xl font-bold text-white">{currencySymbol}{formatCurrency(insights?.cash || 0)}</p>
+                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-tighter flex items-center gap-1">
+                    <Activity className="w-3 h-3" /> Sync Perfect
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-8 grid-cols-1 lg:grid-cols-3">
               {/* Admin Intelligence Card */}
               <Card className="lg:col-span-3 border-none shadow-[0_20px_50px_rgba(99,91,255,0.08)] bg-[#635BFF] text-white rounded-3xl overflow-hidden relative">
                 <div className="absolute top-0 right-0 p-8 opacity-10"><Calculator className="w-32 h-32" /></div>
@@ -604,47 +867,67 @@ export default function StartupDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card className="md:col-span-2 border-none shadow-sm bg-white rounded-2xl">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold">Revenue vs Expenses</CardTitle>
+              <Card className="lg:col-span-2 border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg font-bold">Financial Trajectory</CardTitle>
+                    <CardDescription>Pulses + Real-time Ledger Burn</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#635BFF]" />
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">MRR</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#F43F5E]" />
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">Burn</span>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="h-[350px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 10, fontWeight: 'bold'}} />
+                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 10, fontWeight: 'bold'}} />
                       <RechartsTooltip 
                         cursor={{ fill: 'rgba(99, 91, 255, 0.05)' }} 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
+                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} 
                       />
-                      <Bar dataKey="mrr" fill="#635BFF" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="expenses" fill="#F43F5E" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="mrr" fill="#635BFF" radius={[6, 6, 0, 0]} barSize={20} />
+                      <Bar dataKey="expenses" fill="#F43F5E" radius={[6, 6, 0, 0]} barSize={20} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
 
-              <Card className="border-none shadow-sm bg-white rounded-2xl">
+              <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
                 <CardHeader>
-                  <CardTitle className="text-lg font-bold">PnL Summary</CardTitle>
+                  <CardTitle className="text-lg font-bold">Recent Ledger</CardTitle>
+                  <CardDescription>Live transactions since pulse</CardDescription>
                 </CardHeader>
                 <CardContent>
-                   <ScrollArea className="h-[280px] pr-4">
-                     <div className="space-y-4">
-                        {[...pulses].reverse().map((p, i) => (
-                          <div key={p.id} className="p-3 rounded-xl border border-gray-50 bg-gray-50/30 flex justify-between items-center group hover:bg-white hover:border-gray-100 transition-all">
-                            <div>
-                              <p className="text-xs font-bold text-gray-900">{new Date(p.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-                              <p className="text-[10px] text-gray-400">Monthly Update</p>
+                   <ScrollArea className="h-[350px] pr-4">
+                     <div className="space-y-3">
+                        {[...financials].reverse().slice(0, 15).map((tx) => (
+                          <div key={tx.id} className="p-3 rounded-xl border border-gray-50 bg-gray-50/30 flex justify-between items-center group hover:bg-white hover:border-gray-100 transition-all">
+                            <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-lg ${tx.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                {tx.type === 'income' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-gray-900">{tx.date ? new Date(tx.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : 'N/A'}</p>
+                                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">{tx.type}</p>
+                              </div>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-bold text-emerald-600">+{currencySymbol}{formatCurrency(p.mrr || 0)}</p>
-                              <p className="text-[10px] text-red-400">-{currencySymbol}{formatCurrency(p.expenses || 0)}</p>
+                              <p className={`text-sm font-black tabular-nums ${tx.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {tx.type === 'income' ? '+' : '-'}{currencySymbol}{formatCurrency(tx.amount || 0)}
+                              </p>
                             </div>
                           </div>
                         ))}
-                        {pulses.length === 0 && <p className="text-center text-sm text-gray-400 py-12">No pulse history.</p>}
+                        {financials.length === 0 && <p className="text-center text-sm text-gray-400 py-12">No transactions recorded.</p>}
                      </div>
                    </ScrollArea>
                 </CardContent>
@@ -653,59 +936,242 @@ export default function StartupDetailPage() {
           </TabsContent>
 
           {/* 4. TARGETS */}
-          <TabsContent value="targets" className="mt-0">
+          <TabsContent value="targets" className="mt-0 space-y-6">
+            {/* Header Action Bar */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Execution Board</h2>
+                <p className="text-xs text-gray-400 font-medium">Live founder targets & advisor assessments</p>
+              </div>
+              <Button
+                onClick={() => { setAssessmentTarget(null); setIsAssessmentOpen(true); }}
+                className="bg-[#635BFF] hover:bg-[#4F46E5] text-white rounded-full h-9 px-4 text-xs font-bold shadow-sm gap-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Advisor Assessment
+              </Button>
+            </div>
+
             <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+              {/* LEFT: Strategic Targets + Tasks */}
               <div className="lg:col-span-2 space-y-6">
-                <Card className="border-none shadow-sm bg-white rounded-2xl">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-lg font-bold">Execution Board</CardTitle>
-                      <CardDescription>Milestones and strategic goals</CardDescription>
-                    </div>
-                    <Badge className="bg-primary/10 text-primary border-none">
-                      {milestones.length} active
-                    </Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {milestones.map(m => (
-                        <div key={m.id} className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white hover:border-primary/20 transition-all group">
-                          <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-xl ${m.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                              {m.status === 'completed' ? <CheckCircle2 className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+                {/* Strategic Targets */}
+                {(() => {
+                  const targets = milestones.filter(m => m.type === 'target');
+                  return (
+                    <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                      <CardHeader className="flex flex-row items-center justify-between pb-4">
+                        <div>
+                          <CardTitle className="text-base font-bold flex items-center gap-2">
+                            <Target className="w-4 h-4 text-[#635BFF]" /> Strategic Targets
+                          </CardTitle>
+                          <CardDescription>Founder-set goals with progress tracking</CardDescription>
+                        </div>
+                        <Badge className="bg-[#635BFF]/10 text-[#635BFF] border-none font-bold">{targets.length}</Badge>
+                      </CardHeader>
+                      <CardContent>
+                        {targets.length === 0 ? (
+                          <div className="text-center py-10">
+                            <Target className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+                            <p className="text-sm font-bold text-gray-400">No strategic targets set yet</p>
+                            <p className="text-xs text-gray-300 mt-1">Encourage the founder to set goals in their portal.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {targets.map(t => (
+                              <div key={t.id} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/30 hover:bg-white hover:border-[#635BFF]/20 transition-all group">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      {t.is_pinned && <Flag className="w-3 h-3 text-[#635BFF] fill-current flex-shrink-0" />}
+                                      <p className="text-sm font-bold text-gray-900 truncate">{t.title}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                      {t.category && <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{t.category}</span>}
+                                      {t.deadline && <span className="text-[9px] text-gray-400 flex items-center gap-1"><Calendar className="w-2.5 h-2.5" />Due {new Date(t.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                    </div>
+                                    {t.target_value ? (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-[10px] text-gray-500 font-medium">{t.current_value || 0} / {t.target_value}</span>
+                                          <span className="text-[10px] font-bold text-[#635BFF]">{t.progress || 0}%</span>
+                                        </div>
+                                        <Progress value={t.progress || 0} className="h-1.5" />
+                                      </div>
+                                    ) : (
+                                      <Progress value={t.progress || 0} className="h-1.5" />
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                    <Badge className={`text-[9px] font-bold border-none ${
+                                      t.status === 'Achieved' || t.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
+                                      t.status === 'Delayed' ? 'bg-red-50 text-red-600' :
+                                      'bg-blue-50 text-blue-700'
+                                    }`}>{t.status || 'Active'}</Badge>
+                                    <Button variant="ghost" size="sm" onClick={() => openReviewDialog(t)}
+                                      className="h-7 text-[10px] text-[#635BFF] hover:bg-[#635BFF]/10 font-bold rounded-full px-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Eye className="w-3 h-3 mr-1" /> Review
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+
+                {/* Action Tasks */}
+                {(() => {
+                  const tasks = milestones.filter(m => m.type === 'task');
+                  if (tasks.length === 0) return null;
+                  return (
+                    <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base font-bold flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Founder Focus Tasks
+                        </CardTitle>
+                        <CardDescription>Daily operational actions logged by the founder</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {tasks.map(t => (
+                            <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-all">
+                              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${t.status === 'Done' ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'}`}>
+                                {t.status === 'Done' && <CheckCircle2 className="w-3 h-3 text-white" />}
+                              </div>
+                              <p className={`text-sm font-medium flex-1 ${t.status === 'Done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{t.title}</p>
+                              {t.priority === 'High' && <Flag className="w-3 h-3 text-red-400 fill-current flex-shrink-0" />}
+                              <Badge className={`text-[9px] border-none font-bold ${t.status === 'Done' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>{t.status || 'Today'}</Badge>
                             </div>
-                            <div>
-                              <p className="text-sm font-bold text-gray-900 group-hover:text-primary transition-colors">{m.title}</p>
-                              <p className="text-xs text-gray-400">Created {new Date(m.created_at).toLocaleDateString()}</p>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+
+                {/* Advisor Assessments Timeline */}
+                {(() => {
+                  const assessments = notes.filter(n => n.content?.startsWith('🎯 [Target Assessment]'));
+                  if (assessments.length === 0) return (
+                    <div className="p-6 rounded-3xl border border-dashed border-gray-200 text-center">
+                      <Star className="w-6 h-6 text-gray-200 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-gray-400">No advisor assessments yet</p>
+                      <p className="text-xs text-gray-300 mt-1">Click "Add Advisor Assessment" to log your first review.</p>
+                    </div>
+                  );
+                  return (
+                    <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="text-base font-bold flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-[#635BFF]" /> Advisor Assessment Timeline
+                        </CardTitle>
+                        <CardDescription>Official Collective Lab evaluations</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {assessments.map(note => {
+                            const lines = note.content?.split('\n\n') || [];
+                            const headerLine = lines[0] || '';
+                            const body = lines.slice(1).join('\n\n');
+                            const ratingMatch = headerLine.match(/\[([^\]]+)\]/g) || [];
+                            const rating = ratingMatch[1]?.replace(/[\[\]]/g, '') || 'On Track';
+                            const targetMatch = headerLine.match(/\[Target: ([^\]]+)\]/);
+                            const targetName = targetMatch?.[1] || null;
+                            const ratingColor = rating === 'On Track' ? 'bg-emerald-50 text-emerald-700' : rating === 'Needs Attention' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600';
+                            const authorName = (note as any).profiles?.full_name || 'Lab Advisor';
+                            return (
+                              <div key={note.id} className="p-4 rounded-2xl bg-gray-50/50 border border-gray-100">
+                                <div className="flex items-start gap-3">
+                                  <Avatar className="h-8 w-8 flex-shrink-0">
+                                    <AvatarImage src={(note as any).profiles?.avatar_url || ''} />
+                                    <AvatarFallback className="bg-[#635BFF]/10 text-[#635BFF] text-xs font-bold">{authorName.substring(0,2).toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-xs font-bold text-gray-900">{authorName}</p>
+                                        <Badge className={`text-[9px] font-bold border-none ${ratingColor}`}>{rating}</Badge>
+                                        {targetName && <span className="text-[9px] text-gray-400 font-medium truncate">re: {targetName}</span>}
+                                      </div>
+                                      <span className="text-[9px] text-gray-300 font-medium flex-shrink-0">{new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 leading-relaxed">{body}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+              </div>
+
+              {/* RIGHT: Pinned Target Spotlight */}
+              <div className="space-y-6">
+                {(() => {
+                  const pinned = milestones.filter(m => m.type === 'target').find(t => t.is_pinned || t.priority === 'High');
+                  if (!pinned) return (
+                    <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden">
+                      <CardContent className="pt-8 pb-8 text-center">
+                        <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
+                          <Flag className="w-7 h-7 text-gray-200" />
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-900 mb-1">No Pinned Target</h4>
+                        <p className="text-xs text-gray-400 px-4">Ask the founder to pin their priority target in the portal.</p>
+                      </CardContent>
+                    </Card>
+                  );
+                  return (
+                    <Card className="border-none shadow-lg rounded-3xl overflow-hidden bg-[#1A1A1A] text-white relative">
+                      <div className="absolute top-0 right-0 p-6 opacity-5"><Rocket className="w-24 h-24" /></div>
+                      <CardHeader>
+                        <CardTitle className="text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-2">
+                          <Flag className="w-3 h-3 text-[#635BFF] fill-current" /> Priority Spotlight
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div>
+                          <p className="text-lg font-black leading-tight">{pinned.title}</p>
+                          {pinned.category && <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">{pinned.category}</p>}
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-white/40 font-bold uppercase">Progress</span>
+                            <span className="text-xl font-black text-[#635BFF]">{pinned.progress || 0}%</span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div className="h-2 rounded-full bg-[#635BFF] transition-all duration-500" style={{ width: `${pinned.progress || 0}%` }} />
+                          </div>
+                        </div>
+                        {pinned.target_value && (
+                          <div className="p-3 rounded-2xl bg-white/5 border border-white/10">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-white/40 uppercase font-bold">Current</span>
+                              <span className="text-[9px] text-white/40 uppercase font-bold">Goal</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-base font-black">{pinned.current_value || 0}</span>
+                              <span className="text-base font-black text-[#635BFF]">{pinned.target_value}</span>
                             </div>
                           </div>
-                          <Badge variant="outline" className={`border-none ${m.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                            {m.status === 'completed' ? 'Achieved' : 'In Progress'}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-              <div className="space-y-6">
-                 <Card className="border-none shadow-sm bg-white rounded-2xl bg-gradient-to-br from-[#635BFF]/5 to-transparent">
-                   <CardHeader>
-                     <CardTitle className="text-lg font-bold flex items-center gap-2">
-                       <Zap className="w-4 h-4 text-[#635BFF]" />
-                       Upcoming Target
-                     </CardTitle>
-                   </CardHeader>
-                   <CardContent className="text-center py-6">
-                      <div className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-white mx-auto flex items-center justify-center mb-4">
-                        <Rocket className="w-10 h-10 text-primary" />
-                      </div>
-                      <h4 className="text-md font-bold text-gray-900 mb-1">Series A Bridge</h4>
-                      <p className="text-xs text-gray-500 mb-6 px-4">Aiming for 25% MoM growth for the next 3 months to unlock funding.</p>
-                      <Progress value={45} className="h-2 mb-2" />
-                      <p className="text-[10px] font-bold text-primary uppercase">45% Towards Completion</p>
-                   </CardContent>
-                 </Card>
+                        )}
+                        {pinned.deadline && (
+                          <p className="text-[10px] text-white/30 flex items-center gap-1.5 font-medium">
+                            <Calendar className="w-3 h-3" /> Due {new Date(pinned.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                          </p>
+                        )}
+                        <Button onClick={() => openReviewDialog(pinned)} className="w-full bg-[#635BFF] hover:bg-[#4F46E5] text-white rounded-2xl h-10 text-xs font-bold">
+                          <Eye className="w-3.5 h-3.5 mr-2" /> Review This Target
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
               </div>
             </div>
           </TabsContent>
@@ -768,14 +1234,30 @@ export default function StartupDetailPage() {
               )}
 
               {founderUpdates.map((update) => {
-                const typeConfig: Record<string, { border: string; badge: string; label: string }> = {
-                  win:     { border: "border-l-[#00D395]", badge: "bg-[#00D395]/10 text-[#00D395]", label: "🏆 Win" },
-                  blocker: { border: "border-l-[#FF4D4F]", badge: "bg-[#FF4D4F]/10 text-[#FF4D4F]", label: "🚧 Blocker" },
-                  ask:     { border: "border-l-[#F5A623]", badge: "bg-[#F5A623]/10 text-[#F5A623]", label: "🙋 Ask" },
-                };
-                const detectedType = update.title?.toLowerCase() || "win";
-                const cfg = typeConfig[detectedType] || typeConfig.win;
-                const timeAgo = (d: string) => {
+                const titleLower = update.title?.toLowerCase() || "win";
+                const isWin = titleLower.includes("win") || titleLower.includes("victory");
+                const isBlocker = titleLower.includes("blocker") || titleLower.includes("stuck") || titleLower.includes("stop");
+                const isAsk = titleLower.includes("ask") || titleLower.includes("help") || titleLower.includes("request");
+                
+                let sColor = "emerald";
+                let label = "STRATEGIC WIN";
+                let Icon = Trophy;
+                let gradient = "from-emerald-500/10 via-emerald-500/5 to-transparent";
+                
+                if (isBlocker) { 
+                  sColor = "red"; 
+                  label = "URGENT BLOCKER"; 
+                  Icon = AlertTriangle; 
+                  gradient = "from-red-500/10 via-red-500/5 to-transparent";
+                } else if (isAsk) { 
+                  sColor = "amber"; 
+                  label = "FOUNDER REQUEST"; 
+                  Icon = HelpCircle; 
+                  gradient = "from-amber-500/10 via-amber-500/5 to-transparent";
+                }
+
+                const fullDate = update.created_at ? new Date(update.created_at).toLocaleDateString("default", { day: "numeric", month: "short" }) : "";
+                const timeAgoStr = (d: string) => {
                   const diff = Date.now() - new Date(d).getTime();
                   const mins = Math.floor(diff / 60000);
                   if (mins < 60) return `${mins}m ago`;
@@ -783,20 +1265,27 @@ export default function StartupDetailPage() {
                   if (hrs < 24) return `${hrs}h ago`;
                   return `${Math.floor(hrs / 24)}d ago`;
                 };
+
                 return (
-                  <div
-                    key={update.id}
-                    className={`bg-white rounded-2xl border border-gray-100 border-l-4 ${cfg.border} shadow-sm p-5`}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-widest ${cfg.badge}`}>
-                        {cfg.label}
-                      </span>
-                      <span className="text-[10px] text-gray-400 font-medium">
-                        {update.created_at ? timeAgo(update.created_at) : "—"}
+                  <div key={update.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-all">
+                    {/* Signal Header Banner */}
+                    <div className={`h-10 px-4 flex items-center gap-2 bg-gradient-to-r ${gradient} border-b border-gray-50`}>
+                      <Icon className={`w-3.5 h-3.5 text-${sColor}-600`} />
+                      <span className={`text-[10px] font-black uppercase tracking-[0.2em] text-${sColor}-700`}>
+                        {label}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 font-medium leading-relaxed">{update.content}</p>
+                    
+                    <div className="p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
+                          {fullDate} · <Clock className="w-2.5 h-2.5" /> {update.created_at ? timeAgoStr(update.created_at) : "—"}
+                        </p>
+                      </div>
+                      <p className="text-sm text-[#1A1A1A] font-medium leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-50/50">
+                        {update.content}
+                      </p>
+                    </div>
                   </div>
                 );
               })}
@@ -837,20 +1326,24 @@ export default function StartupDetailPage() {
                     
                     <div className="space-y-4">
                       {notes.length > 0 ? (
-                        notes.map(note => (
-                          <div key={note.id} className="p-4 rounded-xl bg-gray-50/50 border border-gray-50 relative group">
-                            <div className="flex items-center gap-3 mb-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
-                                  AD
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs font-bold text-gray-900">Admin</span>
-                              <span className="text-[10px] text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
+                        notes.map(note => {
+                          const noteAuthor = (note as any).profiles?.full_name || 'Lab Advisor';
+                          return (
+                            <div key={note.id} className="p-4 rounded-xl bg-gray-50/50 border border-gray-50 relative group">
+                              <div className="flex items-center gap-3 mb-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={(note as any).profiles?.avatar_url || ''} />
+                                  <AvatarFallback className="text-[10px] font-bold bg-[#635BFF]/10 text-[#635BFF]">
+                                    {noteAuthor.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs font-bold text-gray-900">{noteAuthor}</span>
+                                <span className="text-[10px] text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
+                              </div>
+                              <p className="text-sm text-gray-600">{note.content}</p>
                             </div>
-                            <p className="text-sm text-gray-600">{note.content}</p>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <p className="text-center text-sm text-gray-400 py-8">No notes yet.</p>
                       )}
@@ -922,6 +1415,199 @@ export default function StartupDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Advisor Assessment Dialog */}
+      <Dialog open={isAssessmentOpen} onOpenChange={setIsAssessmentOpen}>
+        <DialogContent className="sm:max-w-[480px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black">Log Advisor Assessment</DialogTitle>
+            <DialogDescription>Submit an official Collective Lab evaluation on this startup's target execution.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Execution Rating</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['On Track', 'Needs Attention', 'Critical Risk'] as const).map(r => (
+                  <button key={r} onClick={() => setAssessmentRating(r)}
+                    className={`p-3 rounded-2xl border-2 text-xs font-bold transition-all ${assessmentRating === r
+                      ? r === 'On Track' ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : r === 'Needs Attention' ? 'border-amber-400 bg-amber-50 text-amber-700'
+                        : 'border-red-500 bg-red-50 text-red-600'
+                      : 'border-gray-100 text-gray-400 hover:border-gray-200'}`}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Target Focus (Optional)</label>
+              <select value={assessmentTarget?.id || ''} onChange={e => setAssessmentTarget(milestones.find(m => m.id === e.target.value) || null)}
+                className="w-full h-10 rounded-xl border border-gray-200 bg-gray-50 text-sm px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#635BFF]/30">
+                <option value="">General Assessment</option>
+                {milestones.filter(m => m.type === 'target').map(t => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Assessment Notes</label>
+              <Textarea value={assessmentText} onChange={e => setAssessmentText(e.target.value)}
+                placeholder="Write your detailed evaluation here..." className="min-h-[120px] rounded-2xl border-gray-100 bg-gray-50/50 resize-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="ghost" className="rounded-full font-bold">Cancel</Button></DialogClose>
+            <Button onClick={() => addAssessment.mutate()} disabled={!assessmentText.trim() || addAssessment.isPending}
+              className="bg-[#635BFF] hover:bg-[#4F46E5] text-white rounded-full px-6 font-bold">
+              {addAssessment.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+              Submit Assessment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Milestone Review Dialog */}
+      <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
+        <DialogContent className="sm:max-w-[420px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black">Review Target</DialogTitle>
+            <DialogDescription className="truncate">"{reviewTarget?.title}"</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</label>
+              <select value={reviewStatus} onChange={e => setReviewStatus(e.target.value)}
+                className="w-full h-10 rounded-xl border border-gray-200 bg-gray-50 text-sm px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#635BFF]/30">
+                {['Active', 'On Track', 'Delayed', 'Achieved', 'completed'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {reviewTarget?.target_value && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Current Value (Goal: {reviewTarget.target_value})</label>
+                <Input type="number" value={reviewProgress} onChange={e => setReviewProgress(e.target.value)}
+                  className="h-11 rounded-xl bg-gray-50 border-gray-200 text-base font-bold" />
+                {reviewProgress && reviewTarget.target_value > 0 && (
+                  <div>
+                    <Progress value={Math.min(Math.round((parseFloat(reviewProgress) / reviewTarget.target_value) * 100), 100)} className="h-2" />
+                    <p className="text-center text-sm font-bold text-[#635BFF] mt-1">
+                      {Math.min(Math.round((parseFloat(reviewProgress) / reviewTarget.target_value) * 100), 100)}% Complete
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="ghost" className="rounded-full font-bold">Cancel</Button></DialogClose>
+            <Button onClick={handleReviewSave} disabled={updateMilestone.isPending}
+              className="bg-[#635BFF] hover:bg-[#4F46E5] text-white rounded-full px-6 font-bold">
+              {updateMilestone.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Interactive Custom Nudge Modal */}
+      <Dialog open={isNudgeOpen} onOpenChange={setIsNudgeOpen}>
+        <DialogContent className="sm:max-w-[480px] bg-white border-none rounded-3xl shadow-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Send className="w-5 h-5 text-[#635BFF]" />
+              Send Message to Founder
+            </DialogTitle>
+            <DialogDescription className="text-xs font-medium text-gray-500 mt-1">
+              Customize and dispatch a targeted message to the founder of <span className="font-semibold text-gray-800">{startup?.name}</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 my-4">
+            {/* Severity Level */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Message Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: "warning", label: "⚠️ Warning", activeClass: "border-amber-200 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20" },
+                  { value: "error", label: "🚨 Urgent", activeClass: "border-rose-200 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20" },
+                  { value: "info", label: "ℹ️ Info", activeClass: "border-sky-200 bg-sky-50 text-sky-800 ring-2 ring-sky-500/20" }
+                ].map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setNudgeType(type.value as any)}
+                    className={`flex items-center justify-center py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      nudgeType === type.value
+                        ? type.activeClass
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Message */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Custom Message</Label>
+                <span className="text-[10px] text-gray-400 font-medium">Fully editable</span>
+              </div>
+              <Textarea
+                value={nudgeMessage}
+                onChange={(e) => setNudgeMessage(e.target.value)}
+                placeholder="Type your custom message..."
+                className="min-h-[120px] rounded-2xl border-gray-200 focus:border-[#635BFF] focus:ring-2 focus:ring-[#635BFF]/10 text-sm p-4 resize-none leading-relaxed"
+              />
+            </div>
+
+            {/* Dynamic Card Preview */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex gap-3.5 items-start">
+              <div className={`p-2 rounded-xl border ${
+                nudgeType === "error" ? "bg-rose-50 border-rose-100 text-rose-600" :
+                nudgeType === "warning" ? "bg-amber-50 border-amber-100 text-amber-600" :
+                "bg-sky-50 border-sky-100 text-sky-600"
+              }`}>
+                {nudgeType === "error" ? <AlertCircle className="w-5 h-5" /> : <Send className="w-5 h-5" />}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-900 leading-none">Founder Preview</p>
+                <p className="text-[10px] text-gray-400 font-semibold mt-1">Recipient: {startup?.founder_name}</p>
+                <p className="text-xs text-gray-500 mt-2.5 italic line-clamp-2 leading-relaxed">
+                  "{nudgeMessage || "Type a message above to see preview..."}"
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsNudgeOpen(false)}
+              className="rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                sendNudge.mutate({
+                  message: nudgeMessage,
+                  type: nudgeType
+                });
+              }}
+              disabled={sendNudge.isPending || !nudgeMessage.trim()}
+              className="rounded-xl bg-[#635BFF] hover:bg-[#5249cf] text-white font-bold gap-2 min-w-[130px] shadow-md shadow-[#635BFF]/15"
+            >
+              {sendNudge.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {sendNudge.isPending ? "Sending..." : "Send Message"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

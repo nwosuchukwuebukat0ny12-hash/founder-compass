@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import {
   Rocket, TrendingUp, Users, AlertCircle, Loader2, ArrowUpRight,
   ArrowRight, ShieldAlert, CheckCircle2, Clock,
@@ -23,7 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tables } from "@/integrations/supabase/types";
@@ -78,6 +82,70 @@ export default function OverviewPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>("monthly");
   const [isAttendeesOpen, setIsAttendeesOpen] = useState(false);
 
+  // Custom Nudge Dialog States
+  const [isNudgeOpen, setIsNudgeOpen] = useState(false);
+  const [nudgeStartup, setNudgeStartup] = useState<{ id: string; name: string; founderId: string | null; founderName: string } | null>(null);
+  const [nudgeMessage, setNudgeMessage] = useState("");
+  const [nudgeType, setNudgeType] = useState<"warning" | "error" | "info">("warning");
+
+  const sendNudge = useMutation({
+    mutationFn: async ({ startupId, founderId, name, founderName, message, type }: { startupId: string; founderId: string | null; name: string; founderName: string; message: string; type: "warning" | "error" | "info" }) => {
+      let targetUserId = founderId;
+      if (!targetUserId) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("startup_id", startupId)
+          .limit(1);
+        if (profiles && profiles.length > 0) {
+          targetUserId = profiles[0].id;
+        }
+      }
+
+      const titleEmoji = type === "error" ? "🚨 Lab Urgent Alert" : type === "warning" ? "⚠️ Lab Warning Alert" : "ℹ️ Lab Info Alert";
+
+      if (targetUserId) {
+        const { error } = await supabase.from("notifications").insert({
+          user_id: targetUserId,
+          title: titleEmoji,
+          message: message.trim(),
+          type: type === "error" ? "error" : type === "warning" ? "warning" : "info",
+        });
+        if (error) throw error;
+        return { isDemo: false };
+      } else {
+        const { error } = await supabase.from("notes").insert({
+          content: `🎯 [System Log] Sent accountability nudge to founder ${founderName || "David Chen"}.\n\n[Severity: ${type.toUpperCase()}]\nMessage: "${message.trim()}"`,
+          startup_id: startupId,
+          is_private: false
+        });
+        if (error) throw error;
+        return { isDemo: true };
+      }
+    },
+    onSuccess: (data, { name, founderName }) => {
+      setIsNudgeOpen(false);
+      if (data.isDemo) {
+        toast({
+          title: "Message Sent! ⚡ (Demo Mode)",
+          description: `Simulated alert sent to founder ${founderName || "David Chen"} with your message.`,
+        });
+      } else {
+        toast({
+          title: "Message Sent! ⚡",
+          description: `Alerted founder with your message.`,
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to send nudge",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  });
+
   const { data: allStartups = [], isLoading: loadingStartups } = useQuery({
     queryKey: ["overview-startups"],
     queryFn: async () => {
@@ -96,10 +164,10 @@ export default function OverviewPage() {
     },
   });
 
-  const { data: allFinancials = [] } = useQuery({
-    queryKey: ["overview-financials"],
+  const { data: allTransactions = [] } = useQuery({
+    queryKey: ["overview-transactions"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("startup_financials").select("*").order("month", { ascending: true });
+      const { data, error } = await supabase.from("transactions").select("id, startup_id, amount, type, date").order("date", { ascending: true });
       if (error) throw error;
       return data || [];
     },
@@ -165,14 +233,14 @@ export default function OverviewPage() {
       }
     }
 
-    // Portfolio Burn from Financial Logs (Dynamic)
-    const latestFinancials = allFinancials.filter(f => {
+    // Portfolio Burn from Transactions (Live)
+    const latestTransactions = allTransactions.filter(tx => {
       // 1. Filter by segment (only startups currently in 'scored')
-      const isInSegment = scored.some(s => s.id === f.startup_id);
+      const isInSegment = scored.some(s => s.id === tx.startup_id);
       if (!isInSegment) return false;
 
       // 2. Filter by timeframe
-      const date = new Date(f.month);
+      const date = new Date(tx.date);
       const now = new Date();
       if (timeframe === "monthly") return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
       if (timeframe === "weekly") {
@@ -182,50 +250,61 @@ export default function OverviewPage() {
       return date.toDateString() === now.toDateString();
     });
 
-    const totalBurn = latestFinancials.reduce((sum, f) => sum + (f.expenses || 0), 0);
+    const totalBurn = latestTransactions.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
     const compliance = scored.length > 0 ? Math.round((reporting / scored.length) * 100) : 0;
     return { totalRev, totalBurn, totalHead, compliance, totalStartups: scored.length };
-  }, [scored, allFinancials, timeframe]);
+  }, [scored, allTransactions, timeframe]);
 
-  // Financial Chart Data (Aggregate)
+  // Financial Chart Data (Aggregate from Transactions)
   const financialChartData = useMemo(() => {
-    const filtered = allFinancials.filter(f => {
-      // If segment is not all, only include financials for startups in that segment
-      if (segment === "all") return true;
-      const s = allStartups.find(startup => startup.id === f.startup_id);
-      const stage = (s?.current_stage || "").toLowerCase();
-      if (segment === "sme") return stage === "sme" || stage === "smes";
-      return stage === segment.toLowerCase();
-    });
-
-    const groups: Record<string, { label: string; revenue: number; expenses: number }> = {};
+    const groups: Record<string, { label: string; revenue: number; expenses: number; timestamp: number }> = {};
+    const now = new Date();
     
-    filtered.forEach(f => {
-      let key = "";
-      let label = "";
-      const date = new Date(f.month);
-      
-      if (timeframe === "daily") {
-        key = f.month;
-        label = date.toLocaleDateString("default", { day: "numeric", month: "short" });
-      } else if (timeframe === "weekly") {
-        // Simple week grouping
-        const week = Math.floor(date.getDate() / 7);
-        key = `${date.getFullYear()}-${date.getMonth()}-W${week}`;
-        label = `W${week+1} ${date.toLocaleDateString("default", { month: "short" })}`;
-      } else {
-        key = f.month.substring(0, 7); // YYYY-MM
-        label = date.toLocaleDateString("default", { month: "short", year: "2-digit" });
+    allTransactions.forEach(tx => {
+      // 1. Filter by segment
+      if (segment !== "all") {
+        const s = allStartups.find(startup => startup.id === tx.startup_id);
+        const stage = (s?.current_stage || "").toLowerCase();
+        const matchesSME = segment === "sme" && (stage === "sme" || stage === "smes");
+        const matchesOther = stage === segment.toLowerCase();
+        if (!matchesSME && !matchesOther) return;
       }
 
-      if (!groups[key]) groups[key] = { label, revenue: 0, expenses: 0 };
-      groups[key].revenue += f.revenue || 0;
-      groups[key].expenses += f.expenses || 0;
+      const date = new Date(tx.date);
+      let key = "";
+      let label = "";
+
+      if (timeframe === "daily") {
+        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays > 7) return;
+        key = tx.date.slice(0, 10);
+        label = date.toLocaleDateString("default", { day: "numeric", month: "short" });
+      } else if (timeframe === "weekly") {
+        const diffWeeks = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 7));
+        if (diffWeeks > 6) return;
+        const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+        const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
+        const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+        key = `${date.getFullYear()}-W${weekNum}`;
+        label = `W${weekNum}`;
+      } else {
+        const diffMonths = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+        if (diffMonths > 6) return;
+        key = tx.date.slice(0, 7);
+        label = date.toLocaleDateString("default", { month: "short" });
+      }
+
+      if (!groups[key]) {
+        groups[key] = { label, revenue: 0, expenses: 0, timestamp: date.getTime() };
+      }
+
+      if (tx.type === 'income') groups[key].revenue += (tx.amount || 0);
+      if (tx.type === 'expense') groups[key].expenses += (tx.amount || 0);
     });
 
-    return Object.values(groups).sort((a, b) => a.label.localeCompare(b.label)).slice(-12);
-  }, [allFinancials, timeframe, segment, allStartups]);
+    return Object.values(groups).sort((a, b) => a.timestamp - b.timestamp);
+  }, [allTransactions, timeframe, segment, allStartups]);
 
   // Donut Chart Data
   const donutData = useMemo(() => {
@@ -452,8 +531,25 @@ export default function OverviewPage() {
                         </p>
                         <p className="text-[9px] text-gray-400 font-bold uppercase">Since Last Pulse</p>
                       </div>
-                      <Button variant="outline" size="sm" className="rounded-xl h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-primary hover:text-white transition-all">
-                        <Send className="w-3 h-3 mr-1" /> Nudge
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNudgeStartup({
+                            id: s.id,
+                            name: s.name,
+                            founderId: s.founder_id,
+                            founderName: s.founder_name
+                          });
+                          setNudgeMessage(`Hi ${s.founder_name || "there"}! The Collective Lab team noticed that your startup, ${s.name}, hasn't logged a weekly pulse update in over 30 days. Please take 2 minutes to update your weekly metrics and targets in the portal.`);
+                          setNudgeType("warning");
+                          setIsNudgeOpen(true);
+                        }}
+                        className="rounded-xl h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-[#635BFF] hover:text-white hover:border-[#635BFF] transition-all gap-1.5"
+                      >
+                        <Send className="w-3 h-3" />
+                        Message
                       </Button>
                     </div>
                   </div>
@@ -547,6 +643,113 @@ export default function OverviewPage() {
               )}
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Interactive Custom Nudge Modal */}
+      <Dialog open={isNudgeOpen} onOpenChange={setIsNudgeOpen}>
+        <DialogContent className="sm:max-w-[480px] bg-white border-none rounded-3xl shadow-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Send className="w-5 h-5 text-[#635BFF]" />
+              Send Message to Founder
+            </DialogTitle>
+            <DialogDescription className="text-xs font-medium text-gray-500 mt-1">
+              Customize and dispatch a targeted message to the founder of <span className="font-semibold text-gray-800">{nudgeStartup?.name}</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 my-4">
+            {/* Severity Level */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Message Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: "warning", label: "⚠️ Warning", activeClass: "border-amber-200 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20" },
+                  { value: "error", label: "🚨 Urgent", activeClass: "border-rose-200 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20" },
+                  { value: "info", label: "ℹ️ Info", activeClass: "border-sky-200 bg-sky-50 text-sky-800 ring-2 ring-sky-500/20" }
+                ].map((type) => (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setNudgeType(type.value as any)}
+                    className={`flex items-center justify-center py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      nudgeType === type.value
+                        ? type.activeClass
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Message */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Custom Message</Label>
+                <span className="text-[10px] text-gray-400 font-medium">Fully editable</span>
+              </div>
+              <Textarea
+                value={nudgeMessage}
+                onChange={(e) => setNudgeMessage(e.target.value)}
+                placeholder="Type your custom message..."
+                className="min-h-[120px] rounded-2xl border-gray-200 focus:border-[#635BFF] focus:ring-2 focus:ring-[#635BFF]/10 text-sm p-4 resize-none leading-relaxed"
+              />
+            </div>
+
+            {/* Dynamic Card Preview */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex gap-3.5 items-start">
+              <div className={`p-2 rounded-xl border ${
+                nudgeType === "error" ? "bg-rose-50 border-rose-100 text-rose-600" :
+                nudgeType === "warning" ? "bg-amber-50 border-amber-100 text-amber-600" :
+                "bg-sky-50 border-sky-100 text-sky-600"
+              }`}>
+                {nudgeType === "error" ? <AlertCircle className="w-5 h-5" /> : <Send className="w-5 h-5" />}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-900 leading-none">Founder Preview</p>
+                <p className="text-[10px] text-gray-400 font-semibold mt-1">Recipient: {nudgeStartup?.founderName}</p>
+                <p className="text-xs text-gray-500 mt-2.5 italic line-clamp-2 leading-relaxed">
+                  "{nudgeMessage || "Type a message above to see preview..."}"
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsNudgeOpen(false)}
+              className="rounded-xl border-gray-200 text-gray-600 hover:bg-gray-50 font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (nudgeStartup) {
+                  sendNudge.mutate({
+                    startupId: nudgeStartup.id,
+                    founderId: nudgeStartup.founderId,
+                    name: nudgeStartup.name,
+                    founderName: nudgeStartup.founderName,
+                    message: nudgeMessage,
+                    type: nudgeType
+                  });
+                }
+              }}
+              disabled={sendNudge.isPending || !nudgeMessage.trim()}
+              className="rounded-xl bg-[#635BFF] hover:bg-[#5249cf] text-white font-bold gap-2 min-w-[130px] shadow-md shadow-[#635BFF]/15"
+            >
+              {sendNudge.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {sendNudge.isPending ? "Sending..." : "Send Message"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

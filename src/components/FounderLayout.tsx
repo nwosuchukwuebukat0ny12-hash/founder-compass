@@ -1,17 +1,20 @@
+import { useState, useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   LogOut, LayoutDashboard, FileText, Calendar, 
   User as UserIcon, Target, TrendingUp, BellRing,
   ChevronDown, Building2, Users2, ShieldCheck,
-  Briefcase, BarChart3, History
+  Briefcase, BarChart3, History, Bell, Check, CheckSquare, Clock, Inbox, AlertCircle
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { NavLink } from "@/components/NavLink";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sidebar,
   SidebarContent,
@@ -195,6 +198,79 @@ export function FounderLayout({ children }: { children: React.ReactNode }) {
     enabled: !!user,
   });
 
+  const queryClient = useQueryClient();
+
+  // 1. Fetch founder notifications
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["founder-notifications", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user,
+  });
+
+  // 2. Realtime subscription for notifications updates
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["founder-notifications", user.id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, queryClient]);
+
+  // 3. Mutation: Mark single notification as read
+  const markAsRead = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", id)
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["founder-notifications", user?.id] });
+    }
+  });
+
+  // 4. Mutation: Mark all as read
+  const markAllAsRead = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", user!.id)
+        .eq("is_read", false);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["founder-notifications", user?.id] });
+    }
+  });
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-[#F9F6F2]">
@@ -209,6 +285,103 @@ export function FounderLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-5">
+              {/* Premium Live Notification Bell Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-9 w-9 rounded-xl hover:bg-gray-100 transition-colors group"
+                  >
+                    <Bell className="h-5 w-5 text-gray-500 group-hover:text-[#1A1A1A] transition-colors" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#FF4D4F] text-[9px] font-black text-white ring-2 ring-white animate-pulse">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 sm:w-96 p-0 bg-white/95 backdrop-blur-md border-none rounded-3xl shadow-2xl z-50 mr-4 mt-2">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-[#F9F6F2]/50 rounded-t-3xl">
+                    <div className="flex items-center gap-2">
+                      <BellRing className="w-4 h-4 text-[#00D395]" />
+                      <span className="font-bold text-sm text-[#1A1A1A]">Inbox Messages</span>
+                    </div>
+                    {unreadCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => markAllAsRead.mutate()}
+                        disabled={markAllAsRead.isPending}
+                        className="h-7 text-[10px] font-bold uppercase tracking-wider text-[#00D395] hover:bg-[#00D395]/5 rounded-lg px-2"
+                      >
+                        <CheckSquare className="w-3 h-3 mr-1" />
+                        Mark all read
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Message List */}
+                  <ScrollArea className="max-h-[350px] pr-2">
+                    <div className="divide-y divide-gray-50">
+                      {notifications.length > 0 ? (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            className={`p-4 transition-colors flex gap-3.5 items-start ${
+                              !n.is_read ? "bg-[#00D395]/5" : "bg-white"
+                            }`}
+                          >
+                            {/* Color-coded severity dot or icon */}
+                            <div className={`mt-0.5 p-1.5 rounded-lg border ${
+                              n.type === "error" ? "bg-rose-50 border-rose-100 text-rose-500" :
+                              n.type === "warning" ? "bg-amber-50 border-amber-100 text-amber-500" :
+                              "bg-sky-50 border-sky-100 text-sky-500"
+                            }`}>
+                              {n.type === "error" ? <AlertCircle className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-baseline gap-2">
+                                <span className="font-bold text-xs text-gray-900 truncate">
+                                  {n.title}
+                                </span>
+                                <span className="text-[9px] text-gray-400 font-bold uppercase whitespace-nowrap flex items-center gap-1">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {new Date(n.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed font-medium">
+                                {n.message}
+                              </p>
+                              {!n.is_read && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => markAsRead.mutate(n.id)}
+                                  disabled={markAsRead.isPending}
+                                  className="h-6 mt-2 text-[9px] font-bold uppercase tracking-wider text-[#00D395] hover:bg-[#00D395]/10 rounded-md px-1.5"
+                                >
+                                  <Check className="w-3 h-3 mr-1" />
+                                  Mark read
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-12 text-center text-gray-300">
+                          <Inbox className="w-10 h-10 mx-auto mb-2 opacity-25" />
+                          <p className="text-xs font-bold uppercase tracking-wider">No notifications yet</p>
+                          <p className="text-[10px] text-gray-400 font-medium mt-1">You are completely up-to-date.</p>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+
               <div className="flex items-center gap-3 pl-5 border-l border-gray-200">
                 <div className="hidden md:block text-right">
                   <p className="text-xs font-bold text-[#1A1A1A] leading-none">{profile?.full_name || "Founder"}</p>

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Trophy, CheckCircle2, Loader2, ChevronRight, Star, ArrowLeft,
-  X, Search, AlertCircle
+  X, Search, AlertCircle, Rocket
 } from "lucide-react";
 
 // ─── Constants & Types ─────────────────────────────────────────
@@ -266,33 +266,34 @@ export default function JudgePortalPage() {
   // ─── Rendering ──────────────────────────────────────────────
   if (sessionLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white">
-        <Loader2 className="h-8 w-8 animate-spin text-[#F5A623]" />
+      <div className="flex h-screen items-center justify-center bg-[#F9F6F2]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#635BFF]" />
       </div>
     );
   }
 
   if (!isNameSet) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-        <div className="w-full max-w-sm space-y-8 text-center">
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <span className="text-2xl font-black text-[#635BFF]">woot</span>
-            <span className="text-2xl font-black text-gray-400">lab</span>
+      <div className="min-h-screen bg-[#F9F6F2] flex flex-col items-center justify-center p-8">
+        <div className="w-full max-w-sm space-y-8 text-center bg-white p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.02)] border border-gray-100/50">
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 rounded-2xl bg-[#1A1A1A] flex items-center justify-center shadow-xl shadow-[#1A1A1A]/10">
+              <Rocket className="w-8 h-8 text-white" />
+            </div>
           </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-black tracking-tight text-gray-900">Welcome, Judge</h1>
-            <p className="text-sm text-gray-500">Please enter your name to begin the session.</p>
+          <div className="space-y-3 mb-8">
+            <h1 className="text-2xl font-black tracking-tight text-gray-900 leading-tight">Welcome to Founder Pulse Judging Hub</h1>
+            <p className="text-sm font-semibold text-gray-400 leading-relaxed">Please enter your name to judge the awaiting participants</p>
           </div>
           <div className="space-y-4">
             <Input
               placeholder="Enter your full name"
               value={judgeName}
               onChange={(e) => setJudgeName(e.target.value)}
-              className="h-14 rounded-2xl bg-gray-50 border-none font-bold text-center text-lg"
+              className="h-14 rounded-2xl bg-gray-50 border-gray-100 focus:border-[#635BFF] focus:ring-2 focus:ring-[#635BFF]/10 font-bold text-center text-lg placeholder:text-gray-300"
             />
             <Button
-              className="w-full h-14 rounded-2xl bg-gray-900 text-white font-bold text-lg hover:bg-gray-800 transition-all"
+              className="w-full h-14 rounded-2xl bg-[#635BFF] hover:bg-[#5249cf] text-white font-black text-lg shadow-xl shadow-[#635BFF]/15 transition-all active:scale-95"
               disabled={!judgeName.trim()}
               onClick={() => setIsNameSet(true)}
             >
@@ -307,48 +308,48 @@ export default function JudgePortalPage() {
   // Scoring Modal Overlay
   if (selectedParticipant) {
     return (
-      <div className="fixed inset-0 z-50 bg-white flex flex-col overflow-hidden">
+      <div className="fixed inset-0 z-50 bg-[#F9F6F2] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-white shadow-sm z-10">
           <div>
             <h2 className="text-2xl font-black text-gray-900">{selectedParticipant.name}</h2>
-            <p className="text-sm font-bold text-gray-400">Enter scores</p>
+            <p className="text-xs font-bold text-gray-400 mt-0.5">Evaluation Portal</p>
           </div>
           <button 
             onClick={() => { setSelectedParticipant(null); setScores({}); setExpandedGuides(new Set()); }}
-            className="p-2 hover:bg-gray-50 rounded-full"
+            className="p-2 hover:bg-gray-50 rounded-full transition-colors"
           >
             <X className="h-6 w-6 text-gray-400" />
           </button>
         </div>
 
         {/* Content - SCROLLABLE */}
-        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-12 pb-48">
+        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 pb-48">
           {CRITERIA_DATA.map((criterion) => {
             const currentScore = scores[criterion.name] ?? scoredMap[selectedParticipant.id]?.[criterion.name];
             const isExpanded = expandedGuides.has(criterion.name);
 
             return (
-              <div key={criterion.name} className="space-y-6">
+              <div key={criterion.name} className="bg-white p-6 rounded-3xl border border-gray-100/50 shadow-sm space-y-6">
                 {/* Criterion Header */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h3 className="text-lg font-black text-gray-900 leading-tight">{criterion.name}</h3>
-                    <div className="flex items-center gap-2 mt-2">
+                    <h3 className="text-base font-black text-gray-900 leading-tight">{criterion.name}</h3>
+                    <div className="flex items-center gap-2 mt-2.5">
                       <button 
                         onClick={() => toggleGuide(criterion.name)}
-                        className="text-[10px] font-bold text-[#635BFF] bg-[#635BFF]/10 px-3 py-1 rounded-full uppercase tracking-wider"
+                        className="text-[10px] font-bold text-[#635BFF] bg-[#635BFF]/10 px-3 py-1 rounded-full uppercase tracking-wider hover:bg-[#635BFF]/15 transition-all"
                       >
                         {isExpanded ? "Hide Guide" : "View Guide"}
                       </button>
-                      <span className="text-[10px] font-bold text-[#F5A623] bg-[#F5A623]/10 px-3 py-1 rounded-full">
-                        {criterion.weight}
+                      <span className="text-[10px] font-bold text-[#635BFF] bg-[#635BFF]/10 px-3 py-1 rounded-full uppercase tracking-wider">
+                        Weight: {criterion.weight}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2 font-medium">{criterion.description}</p>
+                    <p className="text-xs text-gray-400 mt-2.5 font-medium leading-relaxed">{criterion.description}</p>
                   </div>
-                  <div className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center font-black text-xl transition-all ${
-                    currentScore !== undefined ? "border-[#F5A623] text-[#F5A623] bg-[#F5A623]/5" : "border-gray-50 text-gray-200"
+                  <div className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center font-black text-xl transition-all shrink-0 ${
+                    currentScore !== undefined ? "border-[#635BFF] text-[#635BFF] bg-[#635BFF]/5 shadow-sm shadow-[#635BFF]/5" : "border-gray-50 text-gray-200"
                   }`}>
                     {currentScore ?? "—"}
                   </div>
@@ -374,9 +375,9 @@ export default function JudgePortalPage() {
                     <button
                       key={num}
                       onClick={() => setScores(prev => ({ ...prev, [criterion.name]: num }))}
-                      className={`h-12 rounded-lg font-black text-sm transition-all ${
+                      className={`h-12 rounded-xl font-black text-sm transition-all active:scale-90 ${
                         currentScore === num 
-                          ? "bg-[#F5A623] text-white shadow-lg shadow-[#F5A623]/30" 
+                          ? "bg-[#635BFF] text-white shadow-lg shadow-[#635BFF]/20" 
                           : "bg-gray-50 text-gray-400 hover:bg-gray-100"
                       }`}
                     >
@@ -390,9 +391,9 @@ export default function JudgePortalPage() {
         </div>
 
         {/* Footer Actions */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
+        <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 flex flex-col gap-3 shadow-[0_-8px_30px_rgb(0,0,0,0.02)]">
           <Button 
-            className="w-full h-14 rounded-2xl bg-[#F5A623] hover:bg-[#e0961e] text-white font-black text-lg shadow-xl shadow-[#F5A623]/20 transition-all active:scale-95"
+            className="w-full h-14 rounded-2xl bg-[#635BFF] hover:bg-[#5249cf] text-white font-black text-lg shadow-xl shadow-[#635BFF]/15 transition-all active:scale-95"
             onClick={() => submitScore.mutate()}
             disabled={submitScore.isPending || isFinalized}
           >
@@ -400,7 +401,7 @@ export default function JudgePortalPage() {
           </Button>
           <button 
             onClick={() => { setSelectedParticipant(null); setScores({}); }}
-            className="w-full h-10 text-sm font-bold text-gray-400 hover:text-gray-900"
+            className="w-full h-10 text-xs font-bold text-gray-400 hover:text-gray-900 transition-colors uppercase tracking-wider"
           >
             Close
           </button>
@@ -411,28 +412,28 @@ export default function JudgePortalPage() {
 
   // ─── Main List View ─────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#F9F6F2]">
       {/* Premium Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-50 px-6 py-4">
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-6 py-4 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-1">
-              <span className="text-xl font-black text-[#635BFF]">woot</span>
-              <span className="text-xl font-black text-gray-400">lab</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xl font-black text-[#635BFF]">founder</span>
+              <span className="text-xl font-black text-gray-900">pulse</span>
             </div>
             <div className="hidden sm:block h-8 w-[1px] bg-gray-100" />
             <div className="hidden sm:block">
-              <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Judging as</p>
-              <p className="text-sm font-bold text-gray-700">{judgeName}</p>
+              <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">Judging as</p>
+              <p className="text-sm font-bold text-gray-700 mt-1">{judgeName}</p>
             </div>
           </div>
           <Button 
             disabled={progressPct < 100 || isFinalized || finalizeSession.isPending}
             onClick={() => setIsFinalizeOpen(true)}
-            className={`rounded-xl px-6 h-12 font-black text-sm transition-all ${
+            className={`rounded-xl px-6 h-12 font-black text-sm transition-all active:scale-95 ${
               isFinalized 
                 ? "bg-gray-100 text-gray-400 cursor-default" 
-                : "bg-gray-900 text-white hover:bg-black shadow-lg"
+                : "bg-[#635BFF] hover:bg-[#5249cf] text-white shadow-lg shadow-[#635BFF]/15"
             }`}
           >
             {isFinalized ? (
@@ -446,14 +447,14 @@ export default function JudgePortalPage() {
 
       <div className="max-w-4xl mx-auto p-6 space-y-8 pb-20">
         {/* Progress Section */}
-        <div className="space-y-3">
+        <div className="bg-white p-6 rounded-3xl border border-gray-100/50 shadow-sm space-y-3.5">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest">Scoring Progress</h2>
-            <span className="text-sm font-black text-[#F5A623]">{progressPct}%</span>
+            <span className="text-sm font-black text-[#635BFF]">{progressPct}%</span>
           </div>
-          <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-3 w-full bg-gray-50 rounded-full overflow-hidden border border-gray-100/50">
             <div 
-              className="h-full bg-[#F5A623] transition-all duration-700 ease-out" 
+              className="h-full bg-gradient-to-r from-[#635BFF] to-[#8F00FF] transition-all duration-700 ease-out" 
               style={{ width: `${progressPct}%` }} 
             />
           </div>
@@ -467,7 +468,7 @@ export default function JudgePortalPage() {
             placeholder="Search participants..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-14 pl-14 rounded-2xl bg-gray-50 border-none font-medium text-gray-900 placeholder:text-gray-300"
+            className="h-14 pl-14 rounded-2xl bg-white border border-gray-100/50 shadow-sm font-medium text-gray-900 placeholder:text-gray-300 focus:border-[#635BFF] focus:ring-2 focus:ring-[#635BFF]/10"
           />
         </div>
 
@@ -486,17 +487,17 @@ export default function JudgePortalPage() {
                     setScores(pScores || {});
                   }
                 }}
-                className={`group border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all rounded-3xl cursor-pointer overflow-hidden ${
-                  isScored ? "bg-white" : "bg-white border-dashed border-2 border-gray-100"
+                className={`group border-none shadow-[0_8px_30px_rgb(0,0,0,0.015)] hover:shadow-[0_20px_40px_rgb(99,91,255,0.06)] hover:border-[#635BFF]/10 hover:scale-[1.01] transition-all duration-300 rounded-3xl cursor-pointer overflow-hidden ${
+                  isScored ? "bg-white border border-gray-100/30" : "bg-white/50 border-dashed border-2 border-gray-200"
                 }`}
               >
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-black text-gray-900 group-hover:text-[#635BFF] transition-colors">{p.name}</h3>
+                    <h3 className="text-lg font-black text-gray-900 group-hover:text-[#635BFF] transition-colors truncate pr-2">{p.name}</h3>
                     {isScored ? (
-                      <CheckCircle2 className="h-5 w-5 text-[#00D395]" />
+                      <CheckCircle2 className="h-5 w-5 text-[#00D395] shrink-0" />
                     ) : (
-                      <div className="h-5 w-5 rounded-full border-2 border-gray-100" />
+                      <div className="h-5 w-5 rounded-full border-2 border-gray-100 shrink-0" />
                     )}
                   </div>
                   
@@ -506,12 +507,12 @@ export default function JudgePortalPage() {
                       return (
                         <div key={c.name} className="space-y-1">
                           <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-gray-400">
-                            <span>{c.name}</span>
+                            <span className="truncate pr-4">{c.name}</span>
                             <span className={score > 0 ? "text-gray-900" : "text-gray-200"}>{score || "—"}</span>
                           </div>
                           <div className="h-1.5 w-full bg-gray-50 rounded-full overflow-hidden">
                             <div 
-                              className={`h-full transition-all duration-500 ${score > 5 ? 'bg-[#00D395]' : 'bg-[#F5A623]'}`}
+                              className={`h-full transition-all duration-500 ${score > 5 ? 'bg-[#00D395]' : 'bg-[#635BFF]'}`}
                               style={{ width: `${(score / 7) * 100}%` }}
                             />
                           </div>
@@ -520,7 +521,7 @@ export default function JudgePortalPage() {
                     })}
                   </div>
 
-                  <p className="text-[10px] font-bold text-center text-gray-300 uppercase tracking-widest pt-2">
+                  <p className="text-[10px] font-bold text-center text-gray-300 uppercase tracking-widest pt-2 group-hover:text-[#635BFF]/50 transition-colors">
                     {isScored ? "Click to edit" : "Ready to score"}
                   </p>
                 </CardContent>
@@ -534,8 +535,8 @@ export default function JudgePortalPage() {
       <Dialog open={isFinalizeOpen} onOpenChange={setIsFinalizeOpen}>
         <DialogContent className="sm:max-w-md border-none rounded-3xl shadow-2xl p-8 bg-white">
           <DialogHeader className="text-center space-y-4">
-            <div className="h-16 w-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto">
-              <AlertCircle className="h-8 w-8 text-orange-500" />
+            <div className="h-16 w-16 rounded-2xl bg-[#635BFF]/10 flex items-center justify-center mx-auto">
+              <AlertCircle className="h-8 w-8 text-[#635BFF]" />
             </div>
             <DialogTitle className="text-2xl font-black text-gray-900">Finalize Session?</DialogTitle>
             <DialogDescription className="text-sm font-bold text-gray-400 leading-relaxed">
@@ -551,7 +552,7 @@ export default function JudgePortalPage() {
               Go Back
             </Button>
             <Button 
-              className="flex-1 h-14 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black text-lg shadow-xl shadow-orange-500/20"
+              className="flex-1 h-14 rounded-2xl bg-[#635BFF] hover:bg-[#5249cf] text-white font-black text-lg shadow-xl shadow-[#635BFF]/15 transition-all active:scale-95"
               onClick={() => {
                 setIsFinalizeOpen(false);
                 finalizeSession.mutate();

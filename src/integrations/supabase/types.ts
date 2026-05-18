@@ -209,6 +209,98 @@ export type Database = {
           },
         ]
       }
+      admin_tasks: {
+        Row: {
+          id: string
+          title: string
+          description: string | null
+          status: string
+          priority: string
+          due_date: string | null
+          startup_id: string | null
+          admin_id: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          description?: string | null
+          status?: string
+          priority?: string
+          due_date?: string | null
+          startup_id?: string | null
+          admin_id: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          description?: string | null
+          status?: string
+          priority?: string
+          due_date?: string | null
+          startup_id?: string | null
+          admin_id?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_tasks_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_tasks_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          message: string
+          type: string | null
+          is_read: boolean | null
+          link: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          message: string
+          type?: string | null
+          is_read?: boolean | null
+          link?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          message?: string
+          type?: string | null
+          is_read?: boolean | null
+          link?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -416,6 +508,10 @@ export type Database = {
           week_start: string
           revenue: number | null
           top_win: string | null
+          top_blocker: string | null
+          morale: number | null
+          next_week_goal: string | null
+          priorities: string[] | null
           created_at: string | null
         }
         Insert: {
@@ -425,6 +521,10 @@ export type Database = {
           week_start: string
           revenue?: number | null
           top_win?: string | null
+          top_blocker?: string | null
+          morale?: number | null
+          next_week_goal?: string | null
+          priorities?: string[] | null
           created_at?: string | null
         }
         Update: {
@@ -434,6 +534,10 @@ export type Database = {
           week_start?: string
           revenue?: number | null
           top_win?: string | null
+          top_blocker?: string | null
+          morale?: number | null
+          next_week_goal?: string | null
+          priorities?: string[] | null
           created_at?: string | null
         }
         Relationships: [
@@ -739,6 +843,57 @@ export type Database = {
           }
         ]
       }
+      transactions: {
+        Row: {
+          id: string
+          startup_id: string | null
+          user_id: string | null
+          type: string | null
+          category: string | null
+          amount: number
+          date: string | null
+          description: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          startup_id?: string | null
+          user_id?: string | null
+          type?: string | null
+          category?: string | null
+          amount: number
+          date?: string | null
+          description?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          startup_id?: string | null
+          user_id?: string | null
+          type?: string | null
+          category?: string | null
+          amount?: number
+          date?: string | null
+          description?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_startup_id_fkey"
+            columns: ["startup_id"]
+            isOneToOne: false
+            referencedRelation: "startups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       startup_updates: {
         Row: {
           id: string
@@ -746,6 +901,8 @@ export type Database = {
           title: string
           content: string
           type: string | null
+          is_acknowledged: boolean | null
+          admin_feedback: string | null
           created_at: string | null
           author_id: string | null
         }
@@ -755,6 +912,8 @@ export type Database = {
           title: string
           content: string
           type?: string | null
+          is_acknowledged?: boolean | null
+          admin_feedback?: string | null
           created_at?: string | null
           author_id?: string | null
         }
@@ -764,6 +923,8 @@ export type Database = {
           title?: string
           content?: string
           type?: string | null
+          is_acknowledged?: boolean | null
+          admin_feedback?: string | null
           created_at?: string | null
           author_id?: string | null
         }

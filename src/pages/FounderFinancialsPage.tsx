@@ -38,10 +38,12 @@ type TxType = "income" | "expense";
 type Transaction = {
   id: string;
   startup_id: string | null;
-  revenue: number | null;
-  expenses: number | null;
-  profit_loss: number | null;
-  month: string; // used as ISO date string
+  user_id: string | null;
+  type: string | null;
+  category: string | null;
+  amount: number;
+  date: string | null;
+  description: string | null;
   created_at: string | null;
 };
 
@@ -100,23 +102,23 @@ export default function FounderFinancialsPage() {
 
   const sym = startup?.currency === "NGN" ? "₦" : startup?.currency === "GBP" ? "£" : startup?.currency === "EUR" ? "€" : "$";
 
-  // ── Fetch transactions (startup_financials) ────────────────────────────────
+  // ── Fetch transactions ─────────────────────────────────────────────────────
   const { data: transactions = [], isLoading: isTxLoading } = useQuery<Transaction[]>({
-    queryKey: ["startup-financials", startup?.id],
+    queryKey: ["startup-transactions", startup?.id],
     queryFn: async () => {
       if (!startup?.id) return [];
       const { data, error } = await supabase
-        .from("startup_financials")
-        .select("id, startup_id, revenue, expenses, profit_loss, month, created_at")
+        .from("transactions")
+        .select("*")
         .eq("startup_id", startup.id)
-        .order("month", { ascending: false });
+        .order("date", { ascending: false });
       if (error) throw error;
       return data || [];
     },
     enabled: !!startup?.id,
   });
 
-  // ── Also fetch pulses for the Net Burn fix ─────────────────────────────────
+  // ── Fetch pulses for the Net Burn fix ──────────────────────────────────────
   const { data: pulses = [] } = useQuery({
     queryKey: ["pulses-financials", startup?.id],
     queryFn: async () => {
@@ -140,16 +142,18 @@ export default function FounderFinancialsPage() {
       if (isNaN(val) || val <= 0) throw new Error("Amount must be a positive number.");
       const payload = {
         startup_id: startup.id,
-        month: txDate,
-        revenue: txType === "income" ? val : 0,
-        expenses: txType === "expense" ? val : 0,
-        profit_loss: txType === "income" ? val : -val,
+        user_id: user?.id,
+        type: txType,
+        category: category || null,
+        description: description || null,
+        amount: val,
+        date: txDate,
       };
-      const { error } = await supabase.from("startup_financials").insert(payload);
+      const { error } = await supabase.from("transactions").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["startup-financials", startup?.id] });
+      queryClient.invalidateQueries({ queryKey: ["startup-transactions", startup?.id] });
       toast({ title: "Transaction logged! ✅", description: "Your ledger has been updated." });
       setShowForm(false);
       setAmount("");
@@ -166,14 +170,14 @@ export default function FounderFinancialsPage() {
   const kpis = useMemo(() => {
     // Filter transactions by timeframe
     const filtered = transactions.filter((tx) => {
-      if (!tx.month) return false;
-      if (timeframe === "daily") return isWithinDays(tx.month, 1);
-      if (timeframe === "weekly") return isWithinDays(tx.month, 7);
-      return isWithinDays(tx.month, 30);
+      if (!tx.date) return false;
+      if (timeframe === "daily") return isWithinDays(tx.date, 1);
+      if (timeframe === "weekly") return isWithinDays(tx.date, 7);
+      return isWithinDays(tx.date, 30);
     });
 
-    const totalIncome = filtered.reduce((s, tx) => s + (tx.revenue || 0), 0);
-    const totalExpenses = filtered.reduce((s, tx) => s + (tx.expenses || 0), 0);
+    const totalIncome = filtered.filter(t => t.type === "income").reduce((s, tx) => s + tx.amount, 0);
+    const totalExpenses = filtered.filter(t => t.type === "expense").reduce((s, tx) => s + tx.amount, 0);
     const profit = totalIncome - totalExpenses;
 
     // Net Burn fix: use pulses if no transactions
@@ -201,10 +205,10 @@ export default function FounderFinancialsPage() {
         days[key] = { label: d.toLocaleDateString("default", { month: "short", day: "numeric" }), income: 0, expenses: 0 };
       }
       transactions.forEach((tx) => {
-        const k = tx.month?.split("T")[0] || "";
+        const k = tx.date?.split("T")[0] || "";
         if (days[k]) {
-          days[k].income += tx.revenue || 0;
-          days[k].expenses += tx.expenses || 0;
+          if (tx.type === "income") days[k].income += tx.amount;
+          if (tx.type === "expense") days[k].expenses += tx.amount;
         }
       });
       return Object.values(days);
@@ -216,11 +220,11 @@ export default function FounderFinancialsPage() {
         weeks[i] = { label: `W-${i}`, income: 0, expenses: 0 };
       }
       transactions.forEach((tx) => {
-        if (!tx.month) return;
-        const diff = Math.floor((Date.now() - new Date(tx.month).getTime()) / (7 * 24 * 60 * 60 * 1000));
+        if (!tx.date) return;
+        const diff = Math.floor((Date.now() - new Date(tx.date).getTime()) / (7 * 24 * 60 * 60 * 1000));
         if (diff >= 0 && diff <= 7) {
-          weeks[diff].income += tx.revenue || 0;
-          weeks[diff].expenses += tx.expenses || 0;
+          if (tx.type === "income") weeks[diff].income += tx.amount;
+          if (tx.type === "expense") weeks[diff].expenses += tx.amount;
         }
       });
       return Object.values(weeks).reverse();
@@ -241,14 +245,14 @@ export default function FounderFinancialsPage() {
 
     // 2. Add Transactions (Granular Ledger Items)
     transactions.forEach((tx) => {
-      if (!tx.month) return;
-      const d = new Date(tx.month);
+      if (!tx.date) return;
+      const d = new Date(tx.date);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       if (!months[key]) {
         months[key] = { label: d.toLocaleDateString("default", { month: "short", year: "numeric" }), income: 0, expenses: 0 };
       }
-      months[key].income += tx.revenue || 0;
-      months[key].expenses += tx.expenses || 0;
+      if (tx.type === "income") months[key].income += tx.amount;
+      if (tx.type === "expense") months[key].expenses += tx.amount;
     });
 
     return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
@@ -397,8 +401,7 @@ export default function FounderFinancialsPage() {
           ) : (
             <div className="divide-y divide-gray-50">
               {transactions.map((tx) => {
-                const isIncome = (tx.revenue || 0) > 0;
-                const amount = isIncome ? (tx.revenue || 0) : (tx.expenses || 0);
+                const isIncome = tx.type === "income";
                 return (
                   <div key={tx.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3">
@@ -409,16 +412,17 @@ export default function FounderFinancialsPage() {
                         }
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-[#1A1A1A]">{isIncome ? "Income" : "Expense"}</p>
+                        <p className="text-sm font-semibold text-[#1A1A1A]">{tx.category || (isIncome ? "Income" : "Expense")}</p>
                         <p className="text-[10px] text-gray-400 font-medium flex items-center gap-1">
+                          {tx.description && <span className="text-gray-500 mr-1">{tx.description} ·</span>}
                           <Calendar className="w-2.5 h-2.5" />
-                          {tx.month ? new Date(tx.month).toLocaleDateString("default", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                          {tx.date ? new Date(tx.date).toLocaleDateString("default", { day: "numeric", month: "short", year: "numeric" }) : "—"}
                           {tx.created_at && <span className="opacity-50">· {timeAgoStr(tx.created_at)}</span>}
                         </p>
                       </div>
                     </div>
                     <p className={`text-sm font-bold tabular-nums ${isIncome ? "text-[#00D395]" : "text-[#FF4D4F]"}`}>
-                      {isIncome ? "+" : "-"}{fmt(amount)}
+                      {isIncome ? "+" : "-"}{fmt(tx.amount)}
                     </p>
                   </div>
                 );

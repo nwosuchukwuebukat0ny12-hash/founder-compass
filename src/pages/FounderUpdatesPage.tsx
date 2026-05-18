@@ -7,11 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Rocket, TrendingUp, Target, MessageSquare, Zap, Calendar, CheckCircle2, Clock } from "lucide-react";
+import { Loader2, TrendingUp, Target, MessageSquare, Zap, Calendar, Rocket, Clock } from "lucide-react";
 import { PulseCelebration } from "@/components/PulseCelebration";
 import { toast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function FounderUpdatesPage() {
   const { user } = useAuth();
@@ -29,9 +28,6 @@ export default function FounderUpdatesPage() {
   });
 
   const [isSuccess, setIsSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<"monthly" | "weekly">("monthly");
-  const [weeklyWin, setWeeklyWin] = useState("");
-  const [weeklyRevenue, setWeeklyRevenue] = useState("");
 
   // Form State
   const [formData, setFormData] = useState({
@@ -50,28 +46,11 @@ export default function FounderUpdatesPage() {
     lostCustomers: ""
   });
 
-  // We no longer need the generic metrics loop as we've standardized the form
-  useEffect(() => {
-    // This effect is now empty or can be removed
-  }, [startup]);
-
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
-
-  // Weekly Vitals
-  const { data: weeklyHistory = [] } = useQuery({
-    queryKey: ["weekly-vitals", startup?.id],
-    queryFn: async () => {
-      if (!startup?.id) return [];
-      const { data, error } = await supabase.from("weekly_vitals").select("*").eq("startup_id", startup.id).order("created_at", { ascending: false }).limit(8);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!startup?.id,
-  });
 
   const { data: pulseHistory = [] } = useQuery({
     queryKey: ["pulse-history", startup?.id],
@@ -84,69 +63,43 @@ export default function FounderUpdatesPage() {
     enabled: !!startup?.id,
   });
 
-  const submitWeeklyVital = useMutation({
-    mutationFn: async () => {
-      if (!startup) throw new Error("Startup not loaded");
-      const weekStart = new Date().toISOString().slice(0, 10);
-      const { error } = await supabase.from("weekly_vitals").insert({
-        startup_id: startup.id,
-        founder_id: user?.id,
-        week_start: weekStart,
-        revenue: parseFloat(weeklyRevenue) || 0,
-        top_win: weeklyWin,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["weekly-vitals"] });
-      setWeeklyWin("");
-      setWeeklyRevenue("");
-      toast({ title: "Weekly Vital Logged! 🔥", description: "Your momentum is tracked." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Failed", description: error.message, variant: "destructive" });
-    }
-  });
-
   const submitPulse = useMutation({
     mutationFn: async () => {
       if (!startup) throw new Error("Startup not loaded");
       
-      // 1. Calculate current month's total expenses from ledger
-      const currentMonthStr = new Date().toISOString().slice(0, 7);
-      const { data: monthFinancials } = await supabase
-        .from("startup_financials")
-        .select("expenses")
-        .eq("startup_id", startup.id)
-        .gte("month", `${currentMonthStr}-01`)
-        .lte("month", `${currentMonthStr}-31`);
+      const currentMonth = new Date().toISOString().slice(0, 7);
       
-      const totalMonthlyExpenses = (monthFinancials || []).reduce((sum, tx) => sum + (tx.expenses || 0), 0);
+      // Calculate total expenses from breakdown if showBreakdown is true, otherwise use monthlyBurn field
+      const totalMonthlyExpenses = showBreakdown 
+        ? (parseFloat(formData.spendSalaries) || 0) + 
+          (parseFloat(formData.spendInfra) || 0) + 
+          (parseFloat(formData.spendMarketing) || 0) + 
+          (parseFloat(formData.spendOps) || 0)
+        : (parseFloat(formData.monthlyBurn) || 0);
 
-      // 2. Insert the detailed pulse report
+      // 1. Submit Pulse Record
       const { error: pulseError } = await supabase.from("pulses").insert({
         startup_id: startup.id,
         founder_id: user?.id,
-        month: currentMonthStr,
+        month: currentMonth,
         mrr: parseFloat(formData.mrr) || 0,
-        expenses: totalMonthlyExpenses, // Automatically derived from ledger
+        target_mrr: parseFloat(formData.revenueTarget) || 0,
+        expenses: totalMonthlyExpenses,
         cash_in_bank: parseFloat(formData.cashInBank) || 0,
-        custom_kpis: {},
         active_users: parseInt(formData.activeUsers) || 0,
         team_size: parseInt(formData.teamSize) || 0,
         fundraising_status: formData.fundraising,
-        spend_salaries: 0, // No longer tracked here
-        spend_infra: 0,
-        spend_marketing: 0,
-        spend_ops: 0,
+        spend_salaries: parseFloat(formData.spendSalaries) || 0,
+        spend_infra: parseFloat(formData.spendInfra) || 0,
+        spend_marketing: parseFloat(formData.spendMarketing) || 0,
+        spend_ops: parseFloat(formData.spendOps) || 0,
         new_users: parseInt(formData.newCustomers) || 0,
         lost_users: parseInt(formData.lostCustomers) || 0,
-        target_mrr: parseFloat(formData.revenueTarget) || 0
       });
 
       if (pulseError) throw pulseError;
 
-      // 3. Sync the latest metrics back to the 'startups' table for fast list-view access
+      // 2. Update Startup Runway Calculation
       const runway = totalMonthlyExpenses > 0 
         ? Math.round((parseFloat(formData.cashInBank) || 0) / totalMonthlyExpenses) 
         : 99; // Infinity or high number
@@ -192,38 +145,12 @@ export default function FounderUpdatesPage() {
           Reporting Hub
         </h1>
         <p className="text-gray-500 text-lg leading-relaxed max-w-3xl">
-          Keep <strong className="text-[#00D395]">{startup.name}</strong>'s momentum visible. Submit your numbers and wins.
+          Keep <strong className="text-[#00D395]">{startup.name}</strong>'s momentum visible. Submit your monthly numbers.
         </p>
       </div>
 
       {isSuccess && <PulseCelebration onDismiss={() => setIsSuccess(false)} />}
 
-      {/* TAB SWITCHER */}
-      <div className="flex gap-2 p-1 bg-gray-100 rounded-full w-full sm:w-fit overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setActiveTab("monthly")}
-          className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
-            activeTab === "monthly"
-              ? "bg-white text-[#1A1A1A] shadow-sm"
-              : "text-gray-500 hover:text-[#1A1A1A]"
-          }`}
-        >
-          <Calendar className="w-4 h-4 inline mr-2" />Monthly Pulse
-        </button>
-        <button
-          onClick={() => setActiveTab("weekly")}
-          className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
-            activeTab === "weekly"
-              ? "bg-white text-[#1A1A1A] shadow-sm"
-              : "text-gray-500 hover:text-[#1A1A1A]"
-          }`}
-        >
-          <Zap className="w-4 h-4 inline mr-2" />Weekly Vital
-        </button>
-      </div>
-
-      {/* MONTHLY PULSE TAB */}
-      {activeTab === "monthly" && (
       <div className="space-y-6">
         <div className="p-5 rounded-xl bg-white border border-gray-200 border-l-4 border-l-[#00D395] shadow-sm">
           <p className="text-sm text-gray-600 leading-relaxed">
@@ -248,107 +175,129 @@ export default function FounderUpdatesPage() {
                 <Label htmlFor="mrr" className="text-gray-600 font-semibold">Monthly Revenue / MRR ({sym})</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                  <Input 
-                    id="mrr" 
-                    type="number" 
-                    placeholder="0" 
-                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
-                    required
+                  <Input
+                    id="mrr"
+                    type="number"
+                    placeholder="0"
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]"
                     value={formData.mrr}
                     onChange={(e) => handleInputChange('mrr', e.target.value)}
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="revenueTarget" className="text-gray-600 font-semibold flex items-center gap-2">
-                  <Target className="w-4 h-4 text-[#00D395]" /> Revenue Target ({sym})
-                </Label>
+                <Label htmlFor="revenueTarget" className="text-gray-600 font-semibold">Next Month's Target ({sym})</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                  <Input 
-                    id="revenueTarget" 
-                    type="number" 
-                    placeholder="Your goal for this month" 
-                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
-                    required
+                  <Input
+                    id="revenueTarget"
+                    type="number"
+                    placeholder="0"
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]"
                     value={formData.revenueTarget}
                     onChange={(e) => handleInputChange('revenueTarget', e.target.value)}
                   />
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="monthlyBurn" className="text-gray-600 font-semibold">Gross Burn ({sym})</Label>
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    className="h-auto p-0 text-[10px] uppercase tracking-widest font-bold text-[#635BFF]"
+                    onClick={() => setShowBreakdown(!showBreakdown)}
+                  >
+                    {showBreakdown ? "Hide Breakdown" : "Show Breakdown"}
+                  </Button>
+                </div>
+                {!showBreakdown ? (
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
+                    <Input
+                      id="monthlyBurn"
+                      type="number"
+                      placeholder="0"
+                      className="pl-8 bg-white border-gray-200 text-[#1A1A1A]"
+                      value={formData.monthlyBurn}
+                      onChange={(e) => handleInputChange('monthlyBurn', e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase">{spendLabels[0]}</Label>
+                        <Input type="number" className="h-8 text-sm" value={formData.spendSalaries} onChange={(e) => handleInputChange('spendSalaries', e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase">{spendLabels[1]}</Label>
+                        <Input type="number" className="h-8 text-sm" value={formData.spendInfra} onChange={(e) => handleInputChange('spendInfra', e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase">{spendLabels[2]}</Label>
+                        <Input type="number" className="h-8 text-sm" value={formData.spendMarketing} onChange={(e) => handleInputChange('spendMarketing', e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase">{spendLabels[3]}</Label>
+                        <Input type="number" className="h-8 text-sm" value={formData.spendOps} onChange={(e) => handleInputChange('spendOps', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cashInBank" className="text-gray-600 font-semibold">Cash Balance / Cash in Bank ({sym})</Label>
+                <Label htmlFor="cashInBank" className="text-gray-600 font-semibold">Cash in Bank ({sym})</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                  <Input 
-                    id="cashInBank" 
-                    type="number" 
-                    placeholder="Total current liquidity" 
-                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]" 
-                    required
+                  <Input
+                    id="cashInBank"
+                    type="number"
+                    placeholder="0"
+                    className="pl-8 bg-white border-gray-200 text-[#1A1A1A]"
                     value={formData.cashInBank}
                     onChange={(e) => handleInputChange('cashInBank', e.target.value)}
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="space-y-2 md:col-span-2 pt-4 border-t border-gray-50">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="activeUsers" className="text-gray-600 font-semibold">Total Active Customers</Label>
-                    <Input 
-                      id="activeUsers" 
-                      type="number" 
-                      placeholder="Total current users" 
-                      className="bg-white border-gray-200 text-[#1A1A1A]" 
-                      required
-                      value={formData.activeUsers}
-                      onChange={(e) => handleInputChange('activeUsers', e.target.value)}
-                    />
-                    <p className="text-[9px] text-gray-400 leading-snug">Total number of paying or active users at month end.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-gray-600 font-semibold">User Growth Benchmarks</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-gray-400 font-bold uppercase">New Users</p>
-                        <Input 
-                          type="number" 
-                          placeholder="+" 
-                          className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
-                          value={formData.newCustomers}
-                          onChange={(e) => handleInputChange('newCustomers', e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-gray-400 font-bold uppercase">Churned</p>
-                        <Input 
-                          type="number" 
-                          placeholder="-" 
-                          className="bg-white border-gray-200 text-[#1A1A1A] h-9" 
-                          value={formData.lostCustomers}
-                          onChange={(e) => handleInputChange('lostCustomers', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+          {/* SECTION B: GROWTH & TEAM */}
+          <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="border-b border-gray-100 bg-gray-50/50">
+              <CardTitle className="text-lg font-bold text-[#1A1A1A] flex items-center">
+                <Target className="w-5 h-5 mr-3 text-[#F5A623]" />
+                2. Momentum & Team
+              </CardTitle>
+              <CardDescription className="text-gray-500 font-medium">Tracking your user base and organizational growth.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="activeUsers" className="text-gray-600 font-semibold">Total Active Users / Customers</Label>
+                  <Input
+                    id="activeUsers"
+                    type="number"
+                    placeholder="0"
+                    className="bg-white border-gray-200 text-[#1A1A1A]"
+                    value={formData.activeUsers}
+                    onChange={(e) => handleInputChange('activeUsers', e.target.value)}
+                  />
                 </div>
-               </div>
-
-              <div className="space-y-2 pt-4 border-t border-gray-50">
-                <Label htmlFor="teamSize" className="text-gray-600 font-semibold">Team Size (Headcount)</Label>
-                <Input 
-                  id="teamSize" 
-                  type="number" 
-                  placeholder="Total staff" 
-                  className="bg-white border-gray-200 text-[#1A1A1A]" 
-                  required
-                  value={formData.teamSize}
-                  onChange={(e) => handleInputChange('teamSize', e.target.value)}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="teamSize" className="text-gray-600 font-semibold">Total Team Size (FTEs)</Label>
+                  <Input
+                    id="teamSize"
+                    type="number"
+                    placeholder="1"
+                    className="bg-white border-gray-200 text-[#1A1A1A]"
+                    value={formData.teamSize}
+                    onChange={(e) => handleInputChange('teamSize', e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2 pt-4 border-t border-gray-50">
@@ -366,7 +315,7 @@ export default function FounderUpdatesPage() {
               </div>
             </CardContent>
             <CardFooter className="bg-gray-50/50 pt-6 pb-6 border-t border-gray-100 flex items-center justify-between">
-              <p className="text-xs text-gray-400 font-medium">Wins, blockers &amp; asks? Post them in <strong className="text-[#635BFF]">Updates History</strong>.</p>
+              <p className="text-xs text-gray-400 font-medium">Wins, blockers & asks? Post them in <strong className="text-[#635BFF]">Updates History</strong>.</p>
               <Button 
                 type="submit" 
                 disabled={submitPulse.isPending} 
@@ -407,90 +356,6 @@ export default function FounderUpdatesPage() {
           </Card>
         )}
       </div>
-      )}
-
-      {/* WEEKLY VITALS TAB */}
-      {activeTab === "weekly" && (
-      <div className="space-y-6">
-        <div className="p-5 rounded-xl bg-white border border-gray-200 border-l-4 border-l-[#F5A623] shadow-sm">
-          <p className="text-sm text-gray-600 leading-relaxed">
-            <strong className="text-[#1A1A1A] font-bold">Your Weekly Vital is a 30-second Friday check-in.</strong> Log your revenue pulse and biggest win to keep momentum visible to the Lab and yourself.
-          </p>
-        </div>
-
-        <Card className="bg-white border-gray-200 shadow-sm rounded-2xl overflow-hidden">
-          <CardHeader className="border-b border-gray-100 bg-gray-50/50">
-            <CardTitle className="text-lg font-bold text-[#1A1A1A] flex items-center">
-              <Zap className="w-5 h-5 mr-3 text-[#F5A623]" />
-              Friday Check-in
-            </CardTitle>
-            <CardDescription className="text-gray-500 font-medium">Week of {new Date().toLocaleDateString()}</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-6">
-            <div className="space-y-2">
-              <Label className="text-gray-600 font-semibold">Revenue This Week ({sym})</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{sym}</span>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  className="pl-8 bg-white border-gray-200 text-[#1A1A1A]"
-                  value={weeklyRevenue}
-                  onChange={(e) => setWeeklyRevenue(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-gray-600 font-semibold">Biggest Win This Week</Label>
-              <Textarea
-                placeholder="e.g., Landed a pilot deal with a logistics company."
-                className="bg-white border-gray-200 text-[#1A1A1A] min-h-[100px] resize-y"
-                value={weeklyWin}
-                onChange={(e) => setWeeklyWin(e.target.value)}
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="bg-gray-50/50 pt-6 pb-6 border-t border-gray-100 flex justify-end">
-            <Button
-              onClick={() => submitWeeklyVital.mutate()}
-              disabled={submitWeeklyVital.isPending || !weeklyWin.trim()}
-              className="bg-[#F5A623] hover:bg-[#D4891E] text-white px-8 shadow-md rounded-full font-bold"
-            >
-              {submitWeeklyVital.isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Logging...</>
-              ) : (
-                <><Zap className="mr-2 h-4 w-4" /> Log Weekly Vital</>
-              )}
-            </Button>
-          </CardFooter>
-        </Card>
-
-        {/* WEEKLY HISTORY */}
-        {weeklyHistory.length > 0 && (
-          <Card className="bg-white border-gray-200 shadow-sm rounded-2xl">
-            <CardHeader className="border-b border-gray-100">
-              <CardTitle className="text-sm font-bold text-[#1A1A1A] uppercase tracking-widest flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-400" /> Recent Vitals
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {weeklyHistory.map((vital: any, idx: number) => (
-                <div key={idx} className={`px-6 py-4 flex items-center justify-between ${idx !== weeklyHistory.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                  <div>
-                    <p className="text-sm font-bold text-[#1A1A1A]">Week of {new Date(vital.week_start).toLocaleDateString()}</p>
-                    <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-xs">{vital.top_win || 'No win logged'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-[#F5A623]">{sym}{((vital.revenue || 0) / 1000).toFixed(1)}k</p>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-widest">Revenue</p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-      )}
     </div>
   );
 }

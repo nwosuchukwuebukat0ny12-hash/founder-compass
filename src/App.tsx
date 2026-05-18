@@ -28,6 +28,8 @@ const EventsPage = lazy(() => import("./pages/EventsPage"));
 const UpdatesHistoryPage = lazy(() => import("./pages/UpdatesHistoryPage"));
 const JudgingPage = lazy(() => import("./pages/JudgingPage"));
 const JudgePortalPage = lazy(() => import("./pages/JudgePortalPage"));
+const AdminTasksPage = lazy(() => import("./pages/AdminTasksPage"));
+const IntelligenceRadarPage = lazy(() => import("./pages/IntelligenceRadarPage"));
 
 const LoadingScreen = () => (
   <div className="flex h-screen w-full items-center justify-center">
@@ -112,6 +114,8 @@ const RoleRouter = () => {
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/" element={<OverviewPage />} />
+            <Route path="/radar" element={<IntelligenceRadarPage />} />
+            <Route path="/tasks" element={<AdminTasksPage />} />
             <Route path="/startups" element={<StartupsPage />} />
             <Route path="/startups/:id" element={<StartupDetailPage />} />
             <Route path="/events" element={<EventsPage />} />
