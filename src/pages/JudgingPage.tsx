@@ -36,6 +36,7 @@ interface Participant {
   id: string;
   session_id: string;
   name: string;
+  category?: string;
 }
 
 interface ScoreEntry {
@@ -70,6 +71,9 @@ export default function JudgingPage() {
   const [newParticipantName, setNewParticipantName] = useState("");
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [removeParticipantData, setRemoveParticipantData] = useState<{ id: string; name: string } | null>(null);
+  const [newCategory, setNewCategory] = useState("Ideation");
+  const [customCategory, setCustomCategory] = useState("");
+  const [activeCategoryTab, setActiveCategoryTab] = useState("All");
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -134,16 +138,18 @@ export default function JudgingPage() {
   });
 
   const addParticipant = useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async ({ name, category }: { name: string; category: string }) => {
       if (!selectedSession) throw new Error("No session");
       const { error } = await (supabase as any)
         .from("judging_participants")
-        .insert({ session_id: selectedSession.id, name: name });
+        .insert({ session_id: selectedSession.id, name: name, category: category });
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["judging-participants", selectedSession?.id] });
       setNewParticipantName("");
+      setNewCategory("Ideation");
+      setCustomCategory("");
       setIsAddParticipantOpen(false);
       toast({ title: "Participant Added" });
     },
@@ -176,11 +182,12 @@ export default function JudgingPage() {
   });
 
   // ─── Computed: Leaderboard ─────────────────────────────────
-  const leaderboard = participants
+  const fullLeaderboard = participants
     .map((p) => {
       const pScores = allScores.filter((s) => s.participant_id === p.id);
       const judgeCount = pScores.length;
       const avgScore = judgeCount > 0 ? pScores.reduce((sum, s) => sum + s.total_score, 0) / judgeCount : 0;
+      const category = p.category && p.category.trim() ? p.category.trim() : "General";
 
       // Per-criteria averages
       const criteriaAvgs: Record<string, number> = {};
@@ -194,12 +201,19 @@ export default function JudgingPage() {
       return {
         id: p.id,
         name: p.name || "Unknown",
+        category,
         avgScore: Number(avgScore.toFixed(1)),
         judgeCount,
         criteriaAvgs,
       };
     })
     .sort((a, b) => b.avgScore - a.avgScore);
+
+  // Filtered leaderboard for presentation based on activeCategoryTab
+  const leaderboard = fullLeaderboard.filter((entry) => {
+    if (activeCategoryTab === "All") return true;
+    return entry.category.toLowerCase() === activeCategoryTab.toLowerCase();
+  });
 
   const uniqueJudges = [...new Set(allScores.map((s) => s.judge_name))];
 
@@ -222,9 +236,12 @@ export default function JudgingPage() {
     const rows = leaderboard.map((entry, i) => `
       <tr>
         <td>#${i + 1}</td>
-        <td>${entry.name}</td>
+        <td>
+          <div style="font-weight: bold;">${entry.name}</div>
+          <div style="font-size: 11px; color: #666;">Category: ${entry.category}</div>
+        </td>
         ${selectedSession.criteria.map(c => `<td>${entry.criteriaAvgs[c]?.toFixed(1) || '-'}</td>`).join('')}
-        <td style="font-weight: bold; color: #F5A623;">${entry.avgScore}</td>
+        <td style="font-weight: bold; color: #635BFF;">${entry.avgScore}</td>
         <td>${entry.judgeCount}</td>
       </tr>
     `).join('');
@@ -412,7 +429,7 @@ export default function JudgingPage() {
               <CardContent className="p-5 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Share Link</p>
-                  <p className="text-xs font-bold text-[#F5A623] mt-2 group-hover:underline">Click to copy</p>
+                  <p className="text-xs font-bold text-[#635BFF] mt-2 group-hover:underline">Click to copy</p>
                   {window.location.hostname === 'localhost' && (
                     <div className="flex items-center gap-1 mt-2 text-[8px] text-gray-400">
                       <Phone className="h-2 w-2" />
@@ -420,8 +437,8 @@ export default function JudgingPage() {
                     </div>
                   )}
                 </div>
-                <div className="p-3 bg-[#F5A623]/10 rounded-2xl group-hover:bg-[#F5A623]/20 transition-colors">
-                  <Link2 className="h-5 w-5 text-[#F5A623]" />
+                <div className="p-3 bg-[#635BFF]/10 rounded-2xl group-hover:bg-[#635BFF]/20 transition-colors">
+                  <Link2 className="h-5 w-5 text-[#635BFF]" />
                 </div>
               </CardContent>
             </Card>
@@ -436,13 +453,36 @@ export default function JudgingPage() {
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="rounded-xl text-[10px] font-bold uppercase tracking-widest text-[#F5A623] hover:text-[#F5A623] hover:bg-[#F5A623]/5"
+                    className="rounded-xl text-[10px] font-bold uppercase tracking-widest text-[#635BFF] hover:text-[#635BFF] hover:bg-[#635BFF]/5"
                     onClick={handleExportPDF}
                   >
                     <FileDown className="h-3 w-3 mr-2" /> Download Report
                   </Button>
                 )}
               </div>
+
+              {/* Category Track Filter Tabs */}
+              <div className="flex flex-wrap gap-2 mb-6 p-1 bg-gray-50 rounded-2xl w-fit">
+                {[
+                  { value: "All", label: "🌍 All Tracks" },
+                  { value: "Ideation", label: "💡 Ideation" },
+                  { value: "Prototype", label: "🛠️ Prototype" },
+                  { value: "SME", label: "💼 SME" }
+                ].map((tab) => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveCategoryTab(tab.value)}
+                    className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                      activeCategoryTab === tab.value
+                        ? "bg-[#635BFF] text-white shadow-md shadow-[#635BFF]/10 active:scale-95"
+                        : "text-gray-500 hover:text-gray-900 active:scale-95"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               {leaderboard.length === 0 ? (
                 <div className="py-12 text-center text-gray-300">
                   <Trophy className="h-10 w-10 mx-auto mb-3 opacity-20" />
@@ -453,15 +493,28 @@ export default function JudgingPage() {
                   {leaderboard.map((entry, index) => (
                     <div 
                       key={entry.id} 
-                      className="group flex items-center gap-4 p-4 rounded-2xl bg-white border border-gray-100 hover:border-[#F5A623]/30 hover:shadow-lg hover:shadow-[#F5A623]/5 transition-all cursor-pointer"
+                      className="group flex items-center gap-4 p-4 rounded-2xl bg-white border border-gray-100 hover:border-[#635BFF]/30 hover:shadow-lg hover:shadow-[#635BFF]/5 transition-all cursor-pointer"
                       onClick={() => setSelectedDetailsParticipantId(entry.id)}
                     >
                       <div className="h-10 w-10 flex items-center justify-center shrink-0">
                         {getRankIcon(index)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-bold text-gray-900 truncate">{entry.name}</h4>
-                        <p className="text-[10px] text-gray-400 font-medium">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-gray-900 truncate">{entry.name}</h4>
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider shrink-0 ${
+                            entry.category === "Ideation"
+                              ? "bg-indigo-50 text-indigo-600"
+                              : entry.category === "Prototype"
+                              ? "bg-violet-50 text-violet-600"
+                              : entry.category === "SME"
+                              ? "bg-emerald-50 text-emerald-600"
+                              : "bg-slate-50 text-slate-500"
+                          }`}>
+                            {entry.category}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">
                           {entry.judgeCount} {entry.judgeCount === 1 ? "judge" : "judges"} scored
                         </p>
                       </div>
@@ -472,7 +525,7 @@ export default function JudgingPage() {
                           <div key={c} className="text-center">
                             <div className="w-8 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-[#F5A623] rounded-full"
+                                className="h-full bg-[#635BFF] rounded-full"
                                 style={{ width: `${((entry.criteriaAvgs[c] || 0) / 7) * 100}%` }}
                               />
                             </div>
@@ -484,7 +537,7 @@ export default function JudgingPage() {
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className={`text-xl font-black ${index === 0 ? "text-[#F5A623]" : "text-gray-900"}`}>
+                        <span className={`text-xl font-black ${index === 0 ? "text-[#635BFF]" : "text-gray-900"}`}>
                           {entry.avgScore > 0 ? entry.avgScore : "—"}
                         </span>
                         <p className="text-[9px] text-gray-400 font-bold uppercase">Overall</p>
@@ -582,18 +635,61 @@ export default function JudgingPage() {
               Enter the name of the individual or startup.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="Participant or Startup Name"
-              value={newParticipantName}
-              onChange={(e) => setNewParticipantName(e.target.value)}
-              className="h-14 rounded-2xl bg-gray-50 border-none font-medium px-6"
-            />
+          <div className="py-4 space-y-5">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Startup Name</Label>
+              <Input
+                placeholder="Participant or Startup Name"
+                value={newParticipantName}
+                onChange={(e) => setNewParticipantName(e.target.value)}
+                className="h-14 rounded-2xl bg-gray-50 border-none font-medium px-6 focus-visible:ring-[#635BFF]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Category Track</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: "Ideation", label: "💡 Ideation" },
+                  { value: "Prototype", label: "🛠️ Prototype" },
+                  { value: "SME", label: "💼 SME" },
+                  { value: "Other", label: "⚙️ Custom..." }
+                ].map((cat) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setNewCategory(cat.value)}
+                    className={`h-11 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                      newCategory === cat.value
+                        ? "bg-[#635BFF] text-white border-[#635BFF] shadow-lg shadow-[#635BFF]/10 active:scale-95"
+                        : "bg-white text-gray-600 border-gray-100 hover:bg-gray-50 active:scale-95"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {newCategory === "Other" && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                <Label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Custom Category Name</Label>
+                <Input
+                  placeholder="Enter custom category (e.g. FinTech)"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  className="h-12 rounded-2xl bg-gray-50 border-none font-medium px-6 focus-visible:ring-[#635BFF]"
+                />
+              </div>
+            )}
           </div>
           <Button
             className="w-full h-14 rounded-2xl bg-gray-900 text-white font-bold text-lg hover:bg-gray-800"
-            onClick={() => addParticipant.mutate(newParticipantName)}
-            disabled={!newParticipantName.trim() || addParticipant.isPending}
+            onClick={() => {
+              const finalCategory = newCategory === "Other" ? (customCategory.trim() || "General") : newCategory;
+              addParticipant.mutate({ name: newParticipantName, category: finalCategory });
+            }}
+            disabled={!newParticipantName.trim() || addParticipant.isPending || (newCategory === "Other" && !customCategory.trim())}
           >
             {addParticipant.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Add to Session"}
           </Button>
