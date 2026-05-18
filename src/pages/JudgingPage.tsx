@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Trophy, Plus, Copy, Link2, Users, BarChart3,
   Loader2, ChevronRight, Trash2, Crown, Medal, Award,
-  FileDown, Phone, Info, Eye, X
+  FileDown, Phone, Info, Eye, X, Table2
 } from "lucide-react";
 import {
   Table,
@@ -233,55 +233,95 @@ export default function JudgingPage() {
       year: 'numeric', month: 'long', day: 'numeric' 
     });
 
-    const rows = leaderboard.map((entry, i) => `
-      <tr>
-        <td>#${i + 1}</td>
-        <td>
-          <div style="font-weight: bold;">${entry.name}</div>
-          <div style="font-size: 11px; color: #666;">Category: ${entry.category}</div>
-        </td>
-        ${selectedSession.criteria.map(c => `<td>${entry.criteriaAvgs[c]?.toFixed(1) || '-'}</td>`).join('')}
-        <td style="font-weight: bold; color: #635BFF;">${entry.avgScore}</td>
-        <td>${entry.judgeCount}</td>
-      </tr>
-    `).join('');
+    const categoryTitle = activeCategoryTab !== "All" ? ` — ${activeCategoryTab} Category` : " — All Tracks";
+
+    const rows = leaderboard.map((entry, i) => {
+      const overallDisplay = entry.avgScore > 0 
+        ? `${entry.avgScore} <span style="font-size: 10px; color: #888; font-weight: normal;">/ 7</span>` 
+        : `<span style="font-weight: normal; color: #ccc; letter-spacing: 1px;">_______ / 7</span>`;
+
+      return `
+        <tr>
+          <td style="font-weight: bold; text-align: center;">#${i + 1}</td>
+          <td>
+            <div style="font-weight: bold; font-size: 14px; color: #111;">${entry.name}</div>
+            <div style="font-size: 10px; color: #666; margin-top: 2px;">Track: ${entry.category}</div>
+          </td>
+          ${selectedSession.criteria.map(c => {
+            const scoreVal = entry.criteriaAvgs[c];
+            const displayVal = scoreVal > 0 
+              ? scoreVal.toFixed(1) 
+              : `<span style="color: #ccc; letter-spacing: 1px;">_______</span>`;
+            return `<td style="text-align: center; font-weight: 500;">${displayVal}</td>`;
+          }).join('')}
+          <td style="font-weight: 900; color: #635BFF; text-align: center; font-size: 15px;">${overallDisplay}</td>
+          <td style="width: 260px; height: 50px; border-bottom: 1px solid #eee;"></td>
+        </tr>
+      `;
+    }).join('');
 
     printWindow.document.write(`
       <html>
         <head>
-          <title>${selectedSession.title} - Judging Report</title>
+          <title>${selectedSession.title} - Offline Evaluation Worksheet</title>
           <style>
-            body { font-family: sans-serif; padding: 40px; color: #333; }
-            .header { text-align: center; margin-bottom: 40px; }
-            h1 { margin: 0; color: #111; }
-            .date { color: #666; font-size: 14px; margin-top: 8px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #333; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #635BFF; padding-bottom: 20px; }
+            h1 { margin: 0; color: #111; font-size: 24px; font-weight: 900; }
+            .date { color: #666; font-size: 12px; margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+            
+            .judge-meta { 
+              background: #fcfbfa; 
+              border: 1px dashed #635BFF/30; 
+              padding: 15px 25px; 
+              border-radius: 12px; 
+              margin-bottom: 30px;
+              font-size: 13px;
+            }
+            .meta-line { display: flex; justify-content: space-between; align-items: center; }
+            
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th { background: #f9fafb; text-align: left; padding: 12px; border-bottom: 2px solid #eee; font-size: 12px; text-transform: uppercase; }
-            td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
-            .footer { margin-top: 40px; font-size: 12px; color: #999; text-align: center; }
+            th { background: #f9fafb; text-align: left; padding: 14px 10px; border-bottom: 2px solid #e5e7eb; font-size: 10px; text-transform: uppercase; font-weight: 900; letter-spacing: 0.5px; color: #4b5563; }
+            td { padding: 14px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #1f2937; }
+            
+            .footer { margin-top: 50px; font-size: 11px; color: #9ca3af; text-align: center; font-weight: 500; letter-spacing: 0.5px; }
+            
+            @media print {
+              body { padding: 0; }
+              .judge-meta { background: none; border: 1px solid #ddd; }
+            }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>${selectedSession.title}</h1>
-            <div class="date">Generated on ${date}</div>
+            <h1>${selectedSession.title}${categoryTitle}</h1>
+            <div class="date">Official Evaluation Worksheet — Generated on ${date}</div>
           </div>
+          
+          <div class="judge-meta">
+            <div class="meta-line">
+              <div><strong>JUDGE NAME:</strong> ____________________________________________</div>
+              <div><strong>SIGNATURE:</strong> ____________________________________</div>
+            </div>
+          </div>
+          
           <table>
             <thead>
               <tr>
-                <th>Rank</th>
-                <th>Participant</th>
-                ${selectedSession.criteria.map(c => `<th>${c}</th>`).join('')}
-                <th>Overall Score</th>
-                <th>Judges</th>
+                <th style="width: 60px; text-align: center;">Rank</th>
+                <th style="width: 180px;">Startup / Participant</th>
+                ${selectedSession.criteria.map(c => `<th style="text-align: center; width: 90px;">${c}<br/><span style="font-size: 8px; color: #888; font-weight: normal;">(Score 1-7)</span></th>`).join('')}
+                <th style="text-align: center; width: 110px; color: #635BFF;">Overall Score<br/><span style="font-size: 8px; color: #888; font-weight: normal;">(Score 1-7)</span></th>
+                <th>Comments & Review Notes</th>
               </tr>
             </thead>
             <tbody>
               ${rows}
             </tbody>
           </table>
+          
           <div class="footer">
-            Generated by Founder Compass Judging Hub
+            Generated by Founder Pulse Judging Hub • Offline Backup Evaluation Sheet
           </div>
           <script>
             window.onload = () => { window.print(); window.close(); };
@@ -290,6 +330,55 @@ export default function JudgingPage() {
       </html>
     `);
     printWindow.document.close();
+  };
+
+  const handleExportCSV = () => {
+    if (!selectedSession) return;
+    
+    // Header row
+    const headers = [
+      "Rank",
+      "Startup Name",
+      "Category",
+      ...selectedSession.criteria.map(c => `${c} (1-7)`),
+      "Overall Score (1-7)",
+      "Judges Scored",
+      "Comments / Review Notes"
+    ];
+
+    // Data rows
+    const rows = leaderboard.map((entry, index) => [
+      `#${index + 1}`,
+      entry.name,
+      entry.category,
+      ...selectedSession.criteria.map(c => entry.criteriaAvgs[c] > 0 ? entry.criteriaAvgs[c].toFixed(1) : ""),
+      entry.avgScore > 0 ? entry.avgScore : "",
+      entry.judgeCount,
+      "" // Empty column for comments
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    // Create a blob and download it
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const categorySuffix = activeCategoryTab !== "All" ? `_${activeCategoryTab.toLowerCase()}` : "";
+    link.setAttribute("href", url);
+    link.setAttribute("download", `judging_report_${selectedSession.title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}${categorySuffix}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Excel Backup Downloaded",
+      description: "CSV report has been successfully generated for Excel offline use."
+    });
   };
 
   const getRankIcon = (index: number) => {
@@ -450,14 +539,24 @@ export default function JudgingPage() {
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest">Live Leaderboard</h3>
                 {leaderboard.length > 0 && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="rounded-xl text-[10px] font-bold uppercase tracking-widest text-[#635BFF] hover:text-[#635BFF] hover:bg-[#635BFF]/5"
-                    onClick={handleExportPDF}
-                  >
-                    <FileDown className="h-3 w-3 mr-2" /> Download Report
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="rounded-xl text-[10px] font-bold uppercase tracking-widest text-[#635BFF] hover:text-[#635BFF] hover:bg-[#635BFF]/5"
+                      onClick={handleExportPDF}
+                    >
+                      <FileDown className="h-3 w-3 mr-2" /> Print Sheet (PDF)
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="rounded-xl text-[10px] font-bold uppercase tracking-widest text-[#00D395] hover:text-[#00D395] hover:bg-[#00D395]/5"
+                      onClick={handleExportCSV}
+                    >
+                      <Table2 className="h-3.5 w-3.5 mr-2" /> Excel Backup (CSV)
+                    </Button>
+                  </div>
                 )}
               </div>
 
