@@ -95,6 +95,7 @@ interface Participant {
   id: string;
   session_id: string;
   name: string;
+  category?: string;
 }
 
 interface ScoreRecord {
@@ -114,6 +115,7 @@ export default function JudgePortalPage() {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [expandedGuides, setExpandedGuides] = useState<Set<string>>(new Set());
   const [isFinalizeOpen, setIsFinalizeOpen] = useState(false);
+  const [activeCategoryTab, setActiveCategoryTab] = useState("All");
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: session, isLoading: sessionLoading } = useQuery({
@@ -246,9 +248,13 @@ export default function JudgePortalPage() {
     return map;
   }, [existingScores]);
 
-  const filteredParticipants = participants.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredParticipants = participants.filter(p => {
+    const nameMatches = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const category = p.category && p.category.trim() ? p.category.trim() : "General";
+    
+    if (activeCategoryTab === "All") return nameMatches;
+    return nameMatches && category.toLowerCase() === activeCategoryTab.toLowerCase();
+  });
 
   const totalParticipants = participants.length;
   const scoredCount = existingScores.length;
@@ -312,7 +318,20 @@ export default function JudgePortalPage() {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-white shadow-sm z-10">
           <div>
-            <h2 className="text-2xl font-black text-gray-900">{selectedParticipant.name}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-gray-900">{selectedParticipant.name}</h2>
+              <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider shrink-0 ${
+                selectedParticipant.category === "Ideation"
+                  ? "bg-indigo-50 text-indigo-600"
+                  : selectedParticipant.category === "Prototype"
+                  ? "bg-violet-50 text-violet-600"
+                  : selectedParticipant.category === "SME"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-slate-50 text-slate-500"
+              }`}>
+                {selectedParticipant.category || "General"}
+              </span>
+            </div>
             <p className="text-xs font-bold text-gray-400 mt-0.5">Evaluation Portal</p>
           </div>
           <button 
@@ -472,6 +491,28 @@ export default function JudgePortalPage() {
           />
         </div>
 
+        {/* Category Track Filter Tabs */}
+        <div className="flex flex-wrap gap-2 p-1.5 bg-gray-50 rounded-2xl w-fit border border-gray-100">
+          {[
+            { value: "All", label: "🌍 All Tracks" },
+            { value: "Ideation", label: "💡 Ideation" },
+            { value: "Prototype", label: "🛠️ Prototype" },
+            { value: "SME", label: "💼 SME" }
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveCategoryTab(tab.value)}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                activeCategoryTab === tab.value
+                  ? "bg-[#635BFF] text-white shadow-md shadow-[#635BFF]/10 active:scale-95"
+                  : "text-gray-500 hover:text-gray-900 active:scale-95"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Participant List */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredParticipants.map(p => {
@@ -493,7 +534,20 @@ export default function JudgePortalPage() {
               >
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-black text-gray-900 group-hover:text-[#635BFF] transition-colors truncate pr-2">{p.name}</h3>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-black text-gray-900 group-hover:text-[#635BFF] transition-colors truncate pr-2">{p.name}</h3>
+                      <span className={`text-[9px] px-2 py-0.5 mt-1 inline-block rounded-full font-black uppercase tracking-wider shrink-0 ${
+                        p.category === "Ideation"
+                          ? "bg-indigo-50 text-indigo-600"
+                          : p.category === "Prototype"
+                          ? "bg-violet-50 text-violet-600"
+                          : p.category === "SME"
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-slate-50 text-slate-500"
+                      }`}>
+                        {p.category || "General"}
+                      </span>
+                    </div>
                     {isScored ? (
                       <CheckCircle2 className="h-5 w-5 text-[#00D395] shrink-0" />
                     ) : (
