@@ -100,16 +100,16 @@ export default function FounderPortalPage() {
     enabled: !!user?.id,
   });
 
-  // Live transactions from startup_financials for interactive Burn card
+  // Live transactions from the new ledger for interactive Burn card
   const { data: financialTxs = [] } = useQuery({
     queryKey: ["dashboard-financials", startup?.id],
     queryFn: async () => {
       if (!startup?.id) return [];
       const { data, error } = await supabase
-        .from("startup_financials")
-        .select("expenses, revenue, month")
+        .from("transactions")
+        .select("id, amount, type, date")
         .eq("startup_id", startup.id)
-        .order("month", { ascending: false });
+        .order("date", { ascending: false });
       if (error) throw error;
       return data || [];
     },
@@ -132,20 +132,43 @@ export default function FounderPortalPage() {
   const prevMrr = previousPulse?.mrr || 0;
   const mrrGrowth = prevMrr > 0 ? ((currentMrr - prevMrr) / prevMrr) * 100 : 0;
   const targetMrr = latestPulse?.target_mrr || 0;
-  const currentCash = latestPulse?.cash_in_bank || 0;
+
+  // Adjusted Cash = Last Pulse Cash + All Transactions since that Pulse
+  const currentCash = useMemo(() => {
+    const baseCash = latestPulse?.cash_in_bank || 0;
+    if (!latestPulse) return baseCash;
+    
+    const pulseDate = new Date(latestPulse.month + '-01');
+    const relevantTxs = financialTxs.filter(tx => tx.date && new Date(tx.date) >= pulseDate);
+    
+    const delta = relevantTxs.reduce((sum, tx) => {
+      if (tx.type === 'income') return sum + (tx.amount || 0);
+      if (tx.type === 'expense') return sum - (tx.amount || 0);
+      return sum;
+    }, 0);
+    
+    return baseCash + delta;
+  }, [latestPulse, financialTxs]);
 
   // Real-time financial calculations from transactions
-  const filterByTimeframe = (txs: { expenses?: number; revenue?: number; month: string }[], timeframe: BurnTimeframe) => {
+  const filterByTimeframe = (txs: { amount: number; type: string | null; date: string | null }[], timeframe: BurnTimeframe) => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).getTime();
+    
+    // Start of week (Sunday)
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - now.getDay());
+    sunday.setHours(0, 0, 0, 0);
+    const startOfWeek = sunday.getTime();
+    
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     
     return txs.filter(tx => {
-      const txDate = new Date(tx.month).getTime();
-      if (timeframe === "daily") return txDate >= startOfToday;
-      if (timeframe === "weekly") return txDate >= startOfWeek;
-      return txDate >= startOfMonth;
+      if (!tx.date) return false;
+      const txTime = new Date(tx.date).getTime();
+      if (timeframe === "daily") return txTime >= startOfToday;
+      if (timeframe === "weekly") return txTime >= startOfWeek;
+      return txTime >= startOfMonth;
     });
   };
 
@@ -156,18 +179,21 @@ export default function FounderPortalPage() {
   };
 
   const filteredBurnTxs = filterByTimeframe(financialTxs, burnTimeframe);
-  const calculatedBurn = filteredBurnTxs.reduce((sum, tx) => sum + (tx.expenses || 0), 0);
+  const calculatedBurn = filteredBurnTxs.filter(t => t.type === 'expense').reduce((sum, tx) => sum + (tx.amount || 0), 0);
   
   const filteredIncomeTxs = filterByTimeframe(financialTxs, incomeTimeframe);
-  const currentIncome = filteredIncomeTxs.reduce((sum, tx) => sum + (tx.revenue || 0), 0);
+  const currentIncome = filteredIncomeTxs.filter(t => t.type === 'income').reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
   // Dynamic Runway calculation: Total Cash / 3-Month Average Burn from Logs
   const avgMonthlyBurn = useMemo(() => {
     // 1. Group transactions by month (YYYY-MM) and sum expenses
     const monthlyGroups: Record<string, number> = {};
     financialTxs.forEach(tx => {
-      const monthKey = tx.month.slice(0, 7);
-      monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (tx.expenses || 0);
+      if (!tx.date) return;
+      const monthKey = tx.date.slice(0, 7);
+      if (tx.type === 'expense') {
+        monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (tx.amount || 0);
+      }
     });
 
     // 2. Take the most recent 3 months

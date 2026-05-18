@@ -68,6 +68,8 @@ export default function JudgingPage() {
   const [selectedDetailsParticipantId, setSelectedDetailsParticipantId] = useState<string | null>(null);
   const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
   const [newParticipantName, setNewParticipantName] = useState("");
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [removeParticipantData, setRemoveParticipantData] = useState<{ id: string; name: string } | null>(null);
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -375,11 +377,7 @@ export default function JudgingPage() {
                 variant="ghost"
                 size="icon"
                 className="rounded-xl text-red-400 hover:text-red-600 hover:bg-red-50"
-                onClick={() => {
-                  if (window.confirm("Delete this session and all its scores?")) {
-                    deleteSession.mutate(selectedSession.id);
-                  }
-                }}
+                onClick={() => setDeleteSessionId(selectedSession.id)}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -495,9 +493,7 @@ export default function JudgingPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Remove ${entry.name}?`)) {
-                            removeParticipant.mutate(entry.id);
-                          }
+                          setRemoveParticipantData({ id: entry.id, name: entry.name });
                         }}
                         className="text-gray-300 hover:text-red-400 transition-colors shrink-0"
                       >
@@ -678,6 +674,78 @@ export default function JudgingPage() {
               onClick={() => setSelectedDetailsParticipantId(null)}
             >
               Close Breakdown
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── DELETE SESSION CONFIRMATION DIALOG ─── */}
+      <Dialog open={!!deleteSessionId} onOpenChange={() => setDeleteSessionId(null)}>
+        <DialogContent className="sm:max-w-md border-none rounded-3xl shadow-2xl p-8 bg-white">
+          <DialogHeader className="text-center space-y-4">
+            <div className="h-16 w-16 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto">
+              <Trash2 className="h-8 w-8 text-rose-500" />
+            </div>
+            <DialogTitle className="text-2xl font-black text-gray-900">Delete Judging Session?</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-gray-400 leading-relaxed">
+              Are you sure you want to delete this session and all of its judge scores? This action is permanent and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-8">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-14 rounded-2xl font-bold text-gray-400" 
+              onClick={() => setDeleteSessionId(null)}
+            >
+              Go Back
+            </Button>
+            <Button 
+              className="flex-1 h-14 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-black text-lg shadow-xl shadow-rose-500/15 transition-all active:scale-95"
+              onClick={() => {
+                if (deleteSessionId) {
+                  deleteSession.mutate(deleteSessionId);
+                  setDeleteSessionId(null);
+                }
+              }}
+              disabled={deleteSession.isPending}
+            >
+              {deleteSession.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Delete Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── REMOVE PARTICIPANT CONFIRMATION DIALOG ─── */}
+      <Dialog open={!!removeParticipantData} onOpenChange={() => setRemoveParticipantData(null)}>
+        <DialogContent className="sm:max-w-md border-none rounded-3xl shadow-2xl p-8 bg-white">
+          <DialogHeader className="text-center space-y-4">
+            <div className="h-16 w-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto">
+              <Trash2 className="h-8 w-8 text-amber-500" />
+            </div>
+            <DialogTitle className="text-2xl font-black text-gray-900">Remove Participant?</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-gray-400 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-gray-900">{removeParticipantData?.name}</span> from this session? Their historical scores and ranking will be deleted permanently.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-8">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-14 rounded-2xl font-bold text-gray-400" 
+              onClick={() => setRemoveParticipantData(null)}
+            >
+              Go Back
+            </Button>
+            <Button 
+              className="flex-1 h-14 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-black text-lg shadow-xl shadow-rose-500/15 transition-all active:scale-95"
+              onClick={() => {
+                if (removeParticipantData) {
+                  removeParticipant.mutate(removeParticipantData.id);
+                  setRemoveParticipantData(null);
+                }
+              }}
+              disabled={removeParticipant.isPending}
+            >
+              {removeParticipant.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>

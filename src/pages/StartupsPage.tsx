@@ -5,7 +5,7 @@ import {
   Rocket, Loader2, AlertTriangle, TrendingUp, 
   TrendingDown, Activity, Users, Filter, 
   ArrowUpRight, ArrowDownRight, Globe, 
-  Zap, ShieldCheck, DollarSign, Clock
+  Zap, ShieldCheck, DollarSign, Clock, Building2
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,10 +58,10 @@ export default function StartupsPage() {
     },
   });
 
-  const { data: allFinancials = [] } = useQuery({
-    queryKey: ["all-financials"],
+  const { data: allTransactions = [] } = useQuery({
+    queryKey: ["all-transactions-radar"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("startup_financials").select("*").order("month", { ascending: true });
+      const { data, error } = await supabase.from("transactions").select("id, startup_id, amount, type, date").order("date", { ascending: true });
       if (error) throw error;
       return data || [];
     },
@@ -82,31 +82,44 @@ export default function StartupsPage() {
   const enrichedStartups = useMemo(() => {
     return startups.map(s => {
       const pulses = allPulses.filter(p => p.startup_id === s.id);
-      const financials = allFinancials.filter(f => f.startup_id === s.id);
+      const startupTxs = allTransactions.filter(t => t.startup_id === s.id);
       
       const currentPulse = pulses[0] || null;
       const prevPulse = pulses[1] || null;
+      
+      // 1. Live Cash Calculation (Pulse + Delta since then)
+      const baseCash = currentPulse?.cash_in_bank || 0;
+      const pulseDate = currentPulse ? new Date(currentPulse.month + '-01').getTime() : 0;
+      const recentTxs = startupTxs.filter(tx => new Date(tx.date).getTime() >= pulseDate);
+      
+      const delta = recentTxs.reduce((sum, tx) => {
+        if (tx.type === 'income') return sum + (tx.amount || 0);
+        if (tx.type === 'expense') return sum - (tx.amount || 0);
+        return sum;
+      }, 0);
+      
+      const liveCash = baseCash + delta;
+
+      // 2. Live Burn Calculation (Trailing 3-Month Gross Burn)
+      const monthlyGroups: Record<string, number> = {};
+      startupTxs.forEach(tx => {
+        if (tx.type === 'expense') {
+          const monthKey = tx.date.slice(0, 7);
+          monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (tx.amount || 0);
+        }
+      });
+      
+      const monthValues = Object.values(monthlyGroups).slice(-3);
+      const avgMonthlyBurn = monthValues.length > 0 
+        ? monthValues.reduce((sum, v) => sum + v, 0) / monthValues.length
+        : (currentPulse?.expenses || 0);
+
+      const runway = avgMonthlyBurn > 0 ? liveCash / avgMonthlyBurn : 0;
       
       // Growth (MoM)
       const growth = (currentPulse && prevPulse && prevPulse.mrr > 0)
         ? ((currentPulse.mrr - prevPulse.mrr) / prevPulse.mrr) * 100
         : 0;
-
-      // Runway (Cash / 3-Month Avg Monthly Burn)
-      const cash = currentPulse?.cash_in_bank || 0;
-      
-      const monthlyGroups: Record<string, number> = {};
-      financials.forEach(f => {
-        const monthKey = f.month.slice(0, 7);
-        monthlyGroups[monthKey] = (monthlyGroups[monthKey] || 0) + (f.expenses || 0);
-      });
-
-      const monthValues = Object.values(monthlyGroups).slice(-3);
-      const avgMonthlyBurn = monthValues.length > 0
-        ? monthValues.reduce((sum, val) => sum + val, 0) / monthValues.length
-        : currentPulse?.expenses || 0;
-      
-      const runway = avgMonthlyBurn > 0 ? cash / avgMonthlyBurn : 0;
 
       // Health Status
       let health: "Stable" | "Growing" | "At Risk" = "Stable";
@@ -122,7 +135,7 @@ export default function StartupsPage() {
         needsReview: s.is_delayed || runway < 6
       };
     });
-  }, [startups, allFinancials, allPulses]);
+  }, [startups, allPulses, allTransactions]);
 
   const formatCurrency = (val: number) => {
     if (val >= 1000000) return (val / 1000000).toFixed(1) + "M";
@@ -160,16 +173,22 @@ export default function StartupsPage() {
       
       {/* 1. HEADER & ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground font-heading">Startup Portfolio</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Monitoring health, runway, and growth velocity across <strong className="text-foreground">{startups.length} ventures</strong>.
-          </p>
+        <div className="flex flex-col md:flex-row md:items-center gap-6">
+          <div className="w-16 h-16 rounded-2xl bg-[#1A1A1A] flex items-center justify-center shadow-xl">
+            <Rocket className="w-8 h-8 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground font-heading">Startup Portfolio</h1>
+            <p className="text-sm text-muted-foreground mt-2">
+              Monitoring health, runway, and growth velocity across <strong className="text-foreground">{startups.length} ventures</strong>.
+            </p>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="h-10 px-4 gap-2 border-primary/10 hover:bg-primary/5 text-primary">
-            <Zap className="h-4 w-4" /> Lab Insights
-          </Button>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="bg-[#00D395]/10 text-[#00D395] border-[#00D395]/20 px-3 py-1.5 rounded-xl h-fit">
+            <span className="w-2 h-2 rounded-full bg-[#00D395] mr-2 animate-pulse"></span>
+            Live Ledger Sync
+          </Badge>
         </div>
       </div>
 
