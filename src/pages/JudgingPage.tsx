@@ -75,6 +75,7 @@ export default function JudgingPage() {
   const [customCategory, setCustomCategory] = useState("");
   const [activeCategoryTab, setActiveCategoryTab] = useState("All");
   const [removeJudgeName, setRemoveJudgeName] = useState<string | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -261,6 +262,8 @@ export default function JudgingPage() {
     });
 
     const categoryTitle = activeCategoryTab !== "All" ? ` — ${activeCategoryTab} Category` : " — All Tracks";
+    const link = `${window.location.origin}/judge/${selectedSession.id}`;
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
 
     const rows = leaderboard.map((entry, i) => {
       const overallDisplay = entry.avgScore > 0 
@@ -293,9 +296,13 @@ export default function JudgingPage() {
           <title>${selectedSession.title} - Offline Evaluation Worksheet</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #333; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #635BFF; padding-bottom: 20px; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #635BFF; padding-bottom: 20px; text-align: left; }
+            .header-left { flex: 1; }
             h1 { margin: 0; color: #111; font-size: 24px; font-weight: 900; }
             .date { color: #666; font-size: 12px; margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+            .header-qr { text-align: center; border: 1px solid #e5e7eb; padding: 8px; border-radius: 12px; background: #fff; flex-shrink: 0; }
+            .header-qr img { width: 80px; height: 80px; display: block; margin: 0 auto; }
+            .header-qr div { font-size: 8px; font-weight: 900; color: #635BFF; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
             
             .judge-meta { 
               background: #fcfbfa; 
@@ -321,8 +328,14 @@ export default function JudgingPage() {
         </head>
         <body>
           <div class="header">
-            <h1>${selectedSession.title}${categoryTitle}</h1>
-            <div class="date">Official Evaluation Worksheet — Generated on ${date}</div>
+            <div class="header-left">
+              <h1>${selectedSession.title}${categoryTitle}</h1>
+              <div class="date">Official Evaluation Worksheet — Generated on ${date}</div>
+            </div>
+            <div class="header-qr">
+              <img src="${qrImageUrl}" />
+              <div>Scan to Judge</div>
+            </div>
           </div>
           
           <div class="judge-meta">
@@ -500,8 +513,8 @@ export default function JudgingPage() {
               <h2 className="text-xl font-bold tracking-tight">{selectedSession.title}</h2>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" className="rounded-xl border-gray-200" onClick={copyJudgeLink}>
-                <Copy className="h-4 w-4 mr-2" /> Copy Judge Link
+              <Button variant="outline" className="rounded-xl border-gray-200" onClick={() => setIsShareDialogOpen(true)}>
+                <Copy className="h-4 w-4 mr-2" /> Share & Scan Link
               </Button>
               <Button variant="outline" className="rounded-xl border-gray-200" onClick={() => setIsAddParticipantOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" /> Add Participant
@@ -541,11 +554,11 @@ export default function JudgingPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-3xl cursor-pointer hover:bg-gray-50 transition-all group" onClick={copyJudgeLink}>
+            <Card className="border-none shadow-[0_8px_30px_rgb(0,0,0,0.04)] bg-white rounded-3xl cursor-pointer hover:bg-gray-50 transition-all group" onClick={() => setIsShareDialogOpen(true)}>
               <CardContent className="p-5 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Share Link</p>
-                  <p className="text-xs font-bold text-[#635BFF] mt-2 group-hover:underline">Click to copy</p>
+                  <p className="text-xs font-bold text-[#635BFF] mt-2 group-hover:underline">Click to view QR Code</p>
                   {window.location.hostname === 'localhost' && (
                     <div className="flex items-center gap-1 mt-2 text-[8px] text-gray-400">
                       <Phone className="h-2 w-2" />
@@ -1012,6 +1025,60 @@ export default function JudgingPage() {
               disabled={deleteJudge.isPending}
             >
               {deleteJudge.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Delete Judge"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── SHARE & QR DIALOG ─── */}
+      <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+        <DialogContent className="sm:max-w-[420px] bg-white border-none rounded-3xl shadow-2xl p-8">
+          <DialogHeader className="text-center space-y-3">
+            <DialogTitle className="text-2xl font-black text-gray-900">Judge Portal QR Code</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-gray-400">
+              Judges can scan this code with their phone cameras to grade participants.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedSession && (
+            <div className="flex flex-col items-center justify-center space-y-6 py-6">
+              {/* QR Code Container */}
+              <div className="p-4 bg-white border border-gray-100 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.03)] flex flex-col items-center">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window.location.origin}/judge/${selectedSession.id}`)}`}
+                  alt="Judging Portal QR Code"
+                  className="w-[200px] h-[200px] rounded-2xl"
+                />
+              </div>
+
+              {/* Copyable Link Input */}
+              <div className="w-full space-y-2">
+                <Label className="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Session Link</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    readOnly 
+                    value={`${window.location.origin}/judge/${selectedSession.id}`} 
+                    className="flex-1 rounded-xl bg-gray-50 border-gray-200 text-xs font-medium text-gray-600 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                  <Button 
+                    size="sm" 
+                    className="rounded-xl bg-[#635BFF] hover:bg-[#5249F5] text-white font-bold"
+                    onClick={copyJudgeLink}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              className="w-full h-12 rounded-xl font-bold border-gray-200" 
+              onClick={() => setIsShareDialogOpen(false)}
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
