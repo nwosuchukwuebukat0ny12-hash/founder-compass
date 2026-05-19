@@ -76,6 +76,7 @@ export default function JudgingPage() {
   const [activeCategoryTab, setActiveCategoryTab] = useState("All");
   const [removeJudgeName, setRemoveJudgeName] = useState<string | null>(null);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [deleteScoreConfirm, setDeleteScoreConfirm] = useState<{ participantId: string; participantName: string; judgeName: string } | null>(null);
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -205,6 +206,24 @@ export default function JudgingPage() {
       qc.invalidateQueries({ queryKey: ["judging-scores", selectedSession?.id] });
       toast({ title: "Judge Removed", description: `Successfully removed ${judgeName} and all associated scores.` });
       setRemoveJudgeName(null);
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteParticipantScore = useMutation({
+    mutationFn: async ({ participantId, judgeName }: { participantId: string; judgeName: string }) => {
+      if (!selectedSession) throw new Error("No session selected");
+      const { error } = await (supabase as any)
+        .from("judging_scores")
+        .delete()
+        .eq("session_id", selectedSession.id)
+        .eq("participant_id", participantId)
+        .eq("judge_name", judgeName);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["judging-scores", selectedSession?.id] });
+      toast({ title: "Score Deleted", description: "Successfully removed the judge's score for this startup." });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -880,6 +899,7 @@ export default function JudgingPage() {
                     </TableHead>
                   ))}
                   <TableHead className="font-black text-[10px] uppercase tracking-widest text-gray-900 text-right">Overall Score</TableHead>
+                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-gray-400 text-center w-[60px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -905,6 +925,22 @@ export default function JudgingPage() {
                         );
                       })}
                       <TableCell className="text-right font-black text-[#F5A623]">{score.total_score}</TableCell>
+                      <TableCell className="text-center">
+                        <button
+                          onClick={() => {
+                            const pName = participants.find(p => p.id === selectedDetailsParticipantId)?.name || "Startup";
+                            setDeleteScoreConfirm({
+                              participantId: score.participant_id,
+                              participantName: pName,
+                              judgeName: score.judge_name
+                            });
+                          }}
+                          className="text-gray-300 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-all duration-200"
+                          title="Delete this score"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -1079,6 +1115,45 @@ export default function JudgingPage() {
               onClick={() => setIsShareDialogOpen(false)}
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── REMOVE SINGLE SCORE CONFIRMATION DIALOG ─── */}
+      <Dialog open={!!deleteScoreConfirm} onOpenChange={() => setDeleteScoreConfirm(null)}>
+        <DialogContent className="sm:max-w-md border-none rounded-3xl shadow-2xl p-8 bg-white">
+          <DialogHeader className="text-center space-y-4">
+            <div className="h-16 w-16 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto">
+              <Trash2 className="h-8 w-8 text-rose-500" />
+            </div>
+            <DialogTitle className="text-2xl font-black text-gray-900">Delete Startup Score?</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-gray-400 leading-relaxed text-center">
+              Are you sure you want to delete <span className="font-bold text-gray-900">{deleteScoreConfirm?.judgeName}'s</span> score for <span className="font-bold text-gray-900">{deleteScoreConfirm?.participantName}</span>? This will wipe their criteria details and remove it from calculations.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-8">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-14 rounded-2xl font-bold text-gray-400" 
+              onClick={() => setDeleteScoreConfirm(null)}
+            >
+              Go Back
+            </Button>
+            <Button 
+              className="flex-1 h-14 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-black text-lg shadow-xl shadow-rose-500/15 transition-all active:scale-95"
+              onClick={() => {
+                if (deleteScoreConfirm) {
+                  deleteParticipantScore.mutate({
+                    participantId: deleteScoreConfirm.participantId,
+                    judgeName: deleteScoreConfirm.judgeName
+                  });
+                  setDeleteScoreConfirm(null);
+                }
+              }}
+              disabled={deleteParticipantScore.isPending}
+            >
+              {deleteParticipantScore.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Delete Score"}
             </Button>
           </DialogFooter>
         </DialogContent>
