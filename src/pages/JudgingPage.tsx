@@ -74,6 +74,7 @@ export default function JudgingPage() {
   const [newCategory, setNewCategory] = useState("Ideation");
   const [customCategory, setCustomCategory] = useState("");
   const [activeCategoryTab, setActiveCategoryTab] = useState("All");
+  const [removeJudgeName, setRemoveJudgeName] = useState<string | null>(null);
 
   // ─── Queries ────────────────────────────────────────────────
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -177,6 +178,32 @@ export default function JudgingPage() {
       qc.invalidateQueries({ queryKey: ["judging-sessions"] });
       setSelectedSession(null);
       toast({ title: "Session Deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteJudge = useMutation({
+    mutationFn: async (judgeName: string) => {
+      if (!selectedSession) throw new Error("No session selected");
+      
+      const { error: scoresError } = await (supabase as any)
+        .from("judging_scores")
+        .delete()
+        .eq("session_id", selectedSession.id)
+        .eq("judge_name", judgeName);
+      if (scoresError) throw scoresError;
+
+      const { error: submissionError } = await (supabase as any)
+        .from("judging_judge_submissions")
+        .delete()
+        .eq("session_id", selectedSession.id)
+        .eq("judge_name", judgeName);
+      if (submissionError) throw submissionError;
+    },
+    onSuccess: (_, judgeName) => {
+      qc.invalidateQueries({ queryKey: ["judging-scores", selectedSession?.id] });
+      toast({ title: "Judge Removed", description: `Successfully removed ${judgeName} and all associated scores.` });
+      setRemoveJudgeName(null);
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -667,11 +694,20 @@ export default function JudgingPage() {
                   {uniqueJudges.map((judge) => {
                     const judgeScores = allScores.filter((s) => s.judge_name === judge);
                     return (
-                      <div key={judge} className="p-4 bg-gray-50 rounded-2xl">
-                        <p className="text-sm font-bold text-gray-900">{judge}</p>
-                        <p className="text-[10px] text-gray-400 font-medium mt-1">
-                          Scored {judgeScores.length} {judgeScores.length === 1 ? "participant" : "participants"}
-                        </p>
+                      <div key={judge} className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between group/judge">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{judge}</p>
+                          <p className="text-[10px] text-gray-400 font-medium mt-1">
+                            Scored {judgeScores.length} {judgeScores.length === 1 ? "participant" : "participants"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setRemoveJudgeName(judge)}
+                          className="text-gray-300 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-xl transition-all duration-200 opacity-0 group-hover/judge:opacity-100 focus:opacity-100"
+                          title="Delete Judge & Wipe Scores"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     );
                   })}
@@ -941,6 +977,41 @@ export default function JudgingPage() {
               disabled={removeParticipant.isPending}
             >
               {removeParticipant.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── REMOVE JUDGE CONFIRMATION DIALOG ─── */}
+      <Dialog open={!!removeJudgeName} onOpenChange={() => setRemoveJudgeName(null)}>
+        <DialogContent className="sm:max-w-md border-none rounded-3xl shadow-2xl p-8 bg-white">
+          <DialogHeader className="text-center space-y-4">
+            <div className="h-16 w-16 rounded-2xl bg-rose-50 flex items-center justify-center mx-auto">
+              <Trash2 className="h-8 w-8 text-rose-500" />
+            </div>
+            <DialogTitle className="text-2xl font-black text-gray-900">Remove Judge & Scores?</DialogTitle>
+            <DialogDescription className="text-sm font-semibold text-gray-400 leading-relaxed text-center">
+              Are you sure you want to remove <span className="font-bold text-gray-900">{removeJudgeName}</span> from this session? All of their submitted scores and overall grades will be deleted permanently.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-8">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-14 rounded-2xl font-bold text-gray-400" 
+              onClick={() => setRemoveJudgeName(null)}
+            >
+              Go Back
+            </Button>
+            <Button 
+              className="flex-1 h-14 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-black text-lg shadow-xl shadow-rose-500/15 transition-all active:scale-95"
+              onClick={() => {
+                if (removeJudgeName) {
+                  deleteJudge.mutate(removeJudgeName);
+                }
+              }}
+              disabled={deleteJudge.isPending}
+            >
+              {deleteJudge.isPending ? <Loader2 className="h-6 w-6 animate-spin" /> : "Delete Judge"}
             </Button>
           </DialogFooter>
         </DialogContent>
